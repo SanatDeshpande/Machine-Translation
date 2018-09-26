@@ -25,29 +25,28 @@ t = defaultdict(lambda: init_prob)
 
 print(time.time() - start)
 
-for converge in range(1):
+for converge in range(5):
     count = defaultdict(int)
     total = defaultdict(int)
     s_total = defaultdict(int)
     debug = 0
-    for e_sent in e:
-        for f_sent in f:
-            for e_word in e_sent.split(" "):
-                s_total[e_word] = 0
-                for f_word in f_sent.split(" "):
-                    s_total[e_word] += t[(e_word, f_word)]
-                    #print(s_total[e_word])
-            for e_word in e_sent.split(" "):
-                for f_word in f_sent.split(" "):
-                    tmp = t[(e_word, f_word)]
-                    count[(e_word, f_word)] += tmp / s_total[e_word]
-                    total[f_word] += tmp / s_total[e_word]
+    for e_sent, f_send in zip(e,f):
+        for e_word in e_sent.split(" "):
+            s_total[e_word] = 0
+            for f_word in f_sent.split(" "):
+                s_total[e_word] += t[(e_word, f_word)]
+                #print(s_total[e_word])
+        for e_word in e_sent.split(" "):
+            for f_word in f_sent.split(" "):
+                tmp = t[(e_word, f_word)]
+                count[(e_word, f_word)] += tmp / s_total[e_word]
+                total[f_word] += tmp / s_total[e_word]
 
-            for e_word in e_sent.split(" "):
-                for f_word in f_sent.split(" "):
-                    t[(e_word, f_word)] = count[(e_word, f_word)] / total[f_word]
-        print(debug)
-        debug += 1
+        for e_word in e_sent.split(" "):
+            for f_word in f_sent.split(" "):
+                t[(e_word, f_word)] = count[(e_word, f_word)] / total[f_word]
+    print(debug)
+    debug += 1
 print(time.time() - start)
 
 for (idgaf, idgaf2), value in t.items():
