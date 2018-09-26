@@ -2,8 +2,8 @@ import time
 from collections import defaultdict
 
 start = time.time()
-f = open("./data/hansards.f", "r").read().split("\n")[:50]
-e = open("./data/hansards.e", "r").read().split("\n")[:50]
+f = open("./data/hansards.f", "r").read().split("\n")
+e = open("./data/hansards.e", "r").read().split("\n")
 
 
 f_set = set([])
@@ -22,20 +22,21 @@ init_prob = 1 / float(e_count)
 
 #initialize table of e|f probabilities
 t = defaultdict(lambda: init_prob)
-print(t[("foo", "bar")])
 
 print(time.time() - start)
 
-for converge in range(100):
-    count = {}
-    total = {}
-
+for converge in range(1):
+    count = defaultdict(int)
+    total = defaultdict(int)
+    s_total = defaultdict(int)
+    debug = 0
     for e_sent in e:
         for f_sent in f:
             for e_word in e_sent.split(" "):
-                s_total = defaultdict(lambda: 0)
+                s_total[e_word] = 0
                 for f_word in f_sent.split(" "):
                     s_total[e_word] += t[(e_word, f_word)]
+                    #print(s_total[e_word])
             for e_word in e_sent.split(" "):
                 for f_word in f_sent.split(" "):
                     tmp = t[(e_word, f_word)]
@@ -45,8 +46,11 @@ for converge in range(100):
             for e_word in e_sent.split(" "):
                 for f_word in f_sent.split(" "):
                     t[(e_word, f_word)] = count[(e_word, f_word)] / total[f_word]
+        print(debug)
+        debug += 1
 print(time.time() - start)
 
-for key, value in t:
+for (idgaf, idgaf2), value in t.items():
     if value > 1:
-        print("nah")
+        print("prahblem")
+        break
