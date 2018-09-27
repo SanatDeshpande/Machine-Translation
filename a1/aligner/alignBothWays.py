@@ -1,10 +1,11 @@
-import time
 import sys
 from collections import defaultdict
 
-f = open("./data/hansards.f", "r").read().split("\n")[:1000]
-e = open("./data/hansards.e", "r").read().split("\n")[:1000]
+#read data
+f = open("./data/hansards.f", "r").read().split("\n")
+e = open("./data/hansards.e", "r").read().split("\n")
 
+#create table of initial probabilities
 e_set = set([])
 for e_sent in e:
     for e_word in e_sent.split(" "):
@@ -17,6 +18,7 @@ num_iterations = 3
 
 t = defaultdict(lambda: init_prob)
 
+#run EM algorithm for p(e|f)
 for converge in range(num_iterations):
     count = defaultdict(int)
     total = defaultdict(int)
@@ -36,6 +38,7 @@ for converge in range(num_iterations):
             for f_word in f_sent.split(" "):
                 t[(e_word, f_word)] = count[(e_word, f_word)] / total[f_word]
 
+#init table of proabilities for other way around
 f_set = set([])
 for f_sent in f:
     for f_word in f_sent.split(" "):
@@ -45,6 +48,7 @@ f_count = len(f_set)
 init_prob_inv = 1 / float(f_count)
 t_inv = defaultdict(lambda: init_prob)
 
+# run EM algorith for p(f|e)
 for converge in range(num_iterations):
     count = defaultdict(int)
     total = defaultdict(int)
@@ -67,6 +71,7 @@ for converge in range(num_iterations):
 f2e = defaultdict(set)
 e2f = defaultdict(set)
 
+#computes optimal alignments for each sentence pair and stores in dict
 for e_sent, f_sent in zip(e,f):
     setf2e = set()
     for count_f, f_word in enumerate(f_sent.split(" ")):
@@ -76,10 +81,8 @@ for e_sent, f_sent in zip(e,f):
             if t[(e_word, f_word)] > alignment_max:
                 alignment_max = t[(e_word, f_word)]
                 e_index_max = count_e
-        # sys.stdout.write("%i-%i " % (count_f,e_index_max))
         setf2e.add((count_f, e_index_max))
     f2e[(e_sent, f_sent)] = setf2e
-    # sys.stdout.write("\n")
 
     sete2f = set()
     for count_e, e_word in enumerate(e_sent.split(" ")):
@@ -89,12 +92,10 @@ for e_sent, f_sent in zip(e,f):
             if t_inv[(f_word, e_word)] > alignment_max:
                 alignment_max = t_inv[(f_word, e_word)]
                 f_index_max = count_f
-        # sys.stdout.write("%i-%i " % (count_e,f_index_max))
-        # sete2f.add((count_e, f_index_max))
         sete2f.add((f_index_max, count_e))
     e2f[(f_sent, e_sent)] = sete2f
-    # sys.stdout.write("\n")
 
+#logic for GROW-DIAG-FINAL-AND algorithm that combines the two alignments
 def grow_heuristic(f2e, e2f, e, f):
     for e_sent, f_sent in zip(e,f):
         setf2e = f2e[(e_sent, f_sent)]
@@ -102,20 +103,7 @@ def grow_heuristic(f2e, e2f, e, f):
         intersect = setf2e.intersection(sete2f)
         union = setf2e.union(sete2f)
 
-        addition = set()
-        # GROW-DIAG()
-        for i in intersect:
-            for x in range(-1, 2):
-                for y in range(-1, 2):
-                    x_new = i[0] + x
-                    y_new = i[1] + y
-                    if x_new >= 0 and x < len(e_sent) and y_new >= 0 and y_new < len(f_sent):
-                        tmp = (i[0] + x, i[1] + y) #neighbor
-                        if tmp in union:
-                            firstTuple = set([j[0] for j in intersect])
-                            secondTuple = set([j[1] for j in intersect])
-                            if tmp[0] not in firstTuple or tmp[1] not in secondTuple:
-                                addition.add(tmp)
+        addition = grow_diag(intersect, union, e_sent, f_sent)
 
         intersect = intersect.union(addition) #check if addition b4 or after final-and
         addition = set()
@@ -131,7 +119,21 @@ def grow_heuristic(f2e, e2f, e, f):
             sys.stdout.write("%i-%i " % (i[0], i[1]))
         sys.stdout.write("\n")
 
-
+def grow_diag(intersect, union, e_sent, f_sent):
+    addition = set()
+    for i in intersect:
+        for x in range(-1, 2):
+            for y in range(-1, 2):
+                x_new = i[0] + x
+                y_new = i[1] + y
+                if x_new >= 0 and x < len(e_sent) and y_new >= 0 and y_new < len(f_sent):
+                    tmp = (i[0] + x, i[1] + y) #neighbor
+                    if tmp in union:
+                        firstTuple = set([j[0] for j in intersect])
+                        secondTuple = set([j[1] for j in intersect])
+                        if tmp[0] not in firstTuple or tmp[1] not in secondTuple:
+                            addition.add(tmp)
+    return addition
 
 if __name__ == "__main__":
     grow_heuristic(f2e, e2f, e, f)
