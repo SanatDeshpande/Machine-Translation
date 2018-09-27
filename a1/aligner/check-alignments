@@ -9,11 +9,11 @@ optparser.add_option("-f", "--french", dest="french", default="f", help="Suffix 
 (opts, args) = optparser.parse_args()
 f_data = open("%s.%s" % (opts.train, opts.french))
 e_data = open("%s.%s" % (opts.train, opts.english))
-    
+
 for (n, (f, e, a)) in enumerate(zip(f_data, e_data, sys.stdin)):
   size_f = len(f.strip().split())
   size_e = len(e.strip().split())
-  try: 
+  try:
     alignment = set([tuple(map(int, x.split("-"))) for x in a.strip().split()])
     for (i,j) in alignment:
       if (i>=size_f or j>size_e):
@@ -26,10 +26,10 @@ for (n, (f, e, a)) in enumerate(zip(f_data, e_data, sys.stdin)):
   sys.stdout.write(a)
 
 warned = False
-for a in (sys.stdin): 
+for a in (sys.stdin):
   if not warned:
     sys.stderr.write("WARNING (%s): alignment file is longer than bitext\n" % sys.argv[0])
-    warned = true
+    warned = True
   sys.stdout.write(a)
 
 try:
@@ -37,4 +37,3 @@ try:
     sys.stderr.write("WARNING (%s): bitext is longer than alignment\n" % sys.argv[0])
 except (StopIteration):
   pass
-  

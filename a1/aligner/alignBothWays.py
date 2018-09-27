@@ -14,7 +14,7 @@ for e_sent in e:
 e_count = len(e_set)
 init_prob = 1 / float(e_count)
 
-num_iterations = 3
+num_iterations = 1
 
 t = defaultdict(lambda: init_prob)
 
