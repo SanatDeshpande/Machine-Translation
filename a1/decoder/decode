@@ -24,10 +24,13 @@ for word in set(sum(french,())):
     tm[(word,)] = [models.phrase(word, 0.0)]
 
 sys.stderr.write("Decoding %s...\n" % (opts.input,))
+
+addPhraseSwapping = False if len(sys.argv) < 2 else True
+
 for f in french:
   # The following code implements a monotone decoding
   # algorithm (one that doesn't permute the target phrases).
-  # Hence all hypotheses in stacks[i] represent translations of 
+  # Hence all hypotheses in stacks[i] represent translations of
   # the first i words of the input sentence. You should generalize
   # this so that they can represent translations of *any* i words.
   hypothesis = namedtuple("hypothesis", "logprob, lm_state, predecessor, phrase")
@@ -47,9 +50,41 @@ for f in french:
             logprob += lm.end(lm_state) if j == len(f) else 0.0
             new_hypothesis = hypothesis(logprob, lm_state, h, phrase)
             if lm_state not in stacks[j] or stacks[j][lm_state].logprob < logprob: # second case is recombination
-              stacks[j][lm_state] = new_hypothesis 
+              stacks[j][lm_state] = new_hypothesis
+
+        if addPhraseSwapping:
+            for midInd in range(i+1, j):
+              if f[midInd:j] in tm and f[i:midInd] in tm :
+                for p1 in tm[f[i:midInd]]:
+                  for p2 in tm[f[midInd:j]]:
+                    hypothesis_logprob = h.logprob
+                    phrase_logprob = p2.logprob
+                    logprob2 = hypothesis_logprob + phrase_logprob
+
+                lm_state = h.lm_state
+                for word in p2.english.split():
+                  (lm_state, word_logprob) = lm.score(lm_state, word)
+                  logprob2 += word_logprob
+                new_hypothesis = hypothesis(logprob2, lm_state, h, p2)
+
+                logprob = logprob2 + p1.logprob
+
+                lm_state1 = lm_state
+                for word in p1.english.split():
+                  (lm_state1, word_logprob) = lm.score(lm_state1, word)
+                  logprob += word_logprob
+
+                if j == len(f):
+                    logprob += lm.end(lm_state1)
+                else:
+                    logbrop = 0.0
+
+                new_new_hypothesis = hypothesis(logprob, lm_state1, new_hypothesis, p1)
+                if lm_state1 not in stacks[j] or stacks[j][lm_state1].logprob < logprob: # second case is recombination
+                  stacks[j][lm_state1] = new_new_hypothesis
+
   winner = max(stacks[-1].itervalues(), key=lambda h: h.logprob)
-  def extract_english(h): 
+  def extract_english(h):
     return "" if h.predecessor is None else "%s%s " % (extract_english(h.predecessor), h.phrase.english)
   print extract_english(winner)
 
@@ -57,5 +92,5 @@ for f in french:
     def extract_tm_logprob(h):
       return 0.0 if h.predecessor is None else h.phrase.logprob + extract_tm_logprob(h.predecessor)
     tm_logprob = extract_tm_logprob(winner)
-    sys.stderr.write("LM = %f, TM = %f, Total = %f\n" % 
+    sys.stderr.write("LM = %f, TM = %f, Total = %f\n" %
       (winner.logprob - tm_logprob, tm_logprob, winner.logprob))
