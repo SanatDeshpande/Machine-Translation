@@ -2,12 +2,16 @@
 import optparse
 import sys
 import models
+import math
 from collections import namedtuple
 
-def notIn(a, b):
-    for word in a:
-        for otherWord in b:
-            if word == otherWord:
+def notAlreadyTranslated(a, j, k):
+    if a is None:
+        return True
+
+    for index in a:
+        for index2 in range(j, k):
+            if index == index2:
                 return False
     return True
 
@@ -50,44 +54,46 @@ for f in french:
     # the first i words of the input sentence. You should generalize
     # this so that they can represent translations of *any* i words.
     hypothesis = namedtuple(
-        "hypothesis", "logprob, lm_state, predecessor, phrase")
-    initial_hypothesis = hypothesis(0.0, lm.begin(), None, None)
+        "hypothesis", "logprob, lm_state, predecessor, phrase, wordsTranslated")
+    initial_hypothesis = hypothesis(0.0, lm.begin(), None, None, None)
     stacks = [{} for _ in f] + [{}]
     stacks[0][lm.begin()] = initial_hypothesis
     threshold = 0.005
-    for i, stack in enumerate(stacks[:-2]):
+    for i, stack in enumerate(stacks[:-1]):
         bestLogProb = -100000000
-        print(stack)
         # for h in sorted(stack.itervalues()):
             # bestLogProb = h.logprob if h.logprob > bestLogProb else bestLogProb
         for h in sorted(stack.itervalues(),key=lambda h: -h.logprob)[:opts.s]:
             # if h.logprob < bestLogProb * 1 / threshold: #threshold pruning on the stack of hypotheses
             #     continue
-            for j in xrange(0, len(f) + 1):
+            for j in xrange(0, len(f)):
                 for k in xrange(j+1, len(f) + 1):
-                    # print(h.lm_state, f[j:k], notIn(h.lm_state,f[j:k]))
-                    if f[j:k] in tm and notIn(h.lm_state, f[j:k]):
+                    # print(h.wordsTranslated)
+                    # print(range(j, k+1))
+                    # print(notAlreadyTranslated(h.wordsTranslated, j, k))
+                    # if notAlreadyTranslated(h.wordsTranslated, j, k):
+                        # print(notAlreadyTranslated(h.wordsTranslated, j, k))
+                        # print(h.wordsTranslated, j, k)
+                        # print("\n")
+                    if f[j:k] in tm and notAlreadyTranslated(h.wordsTranslated, j, k):
                         for phrase in tm[f[j:k]]:
+                            distance = abs(k - i - 1)
                             logprob = h.logprob + phrase.logprob
+                            logprob += 0 if distance == 0 else math.log(distance)
                             lm_state = h.lm_state
                             for word in phrase.english.split():
                                 (lm_state, word_logprob) = lm.score(lm_state, word)
                                 logprob += word_logprob
                             logprob += lm.end(lm_state) if k == len(f) else 0.0
+                            new_words_translated = range(j,k) if h.wordsTranslated is None else h.wordsTranslated + range(j, k)
                             new_hypothesis = hypothesis(
-                                logprob, lm_state, h, phrase)
+                                logprob, lm_state, h, phrase, new_words_translated)
                             # second case is recombination
-                            if lm_state not in stacks[i+1] or stacks[i+1][lm_state].logprob < logprob:
-                                print(new_hypothesis.lm_state)
-                                stacks[i+1][lm_state] = new_hypothesis
-    break
-    reverse_index = 0
-    for index, value in enumerate(stacks[::-1]):
-        if len(value) != 0:
-            reverse_index = -1 * (index + 1)
-            break
+                            # print((new_hypothesis.wordsTranslated), len(new_hypothesis.wordsTranslated))
+                            if lm_state not in stacks[len(new_hypothesis.wordsTranslated)] or stacks[len(new_hypothesis.wordsTranslated)][lm_state].logprob < logprob:
+                                stacks[len(new_hypothesis.wordsTranslated)][lm_state] = new_hypothesis
 
-    winner = max(stacks[reverse_index].itervalues(), key=lambda h: h.logprob)
+    winner = max(stacks[-1].itervalues(), key=lambda h: h.logprob)
     def extract_english(h):
         return "" if h.predecessor is None else "%s%s " % (extract_english(h.predecessor), h.phrase.english)
     print extract_english(winner)
