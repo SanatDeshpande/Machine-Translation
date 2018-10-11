@@ -4,6 +4,14 @@ import sys
 import models
 from collections import namedtuple
 
+def notIn(a, b):
+    for word in a:
+        for otherWord in b:
+            if word == otherWord:
+                return False
+    return True
+
+
 optparser = optparse.OptionParser()
 optparser.add_option("-i", "--input", dest="input", default="data/input",
                      help="File containing sentences to translate (default=data/input)")
@@ -47,17 +55,18 @@ for f in french:
     stacks = [{} for _ in f] + [{}]
     stacks[0][lm.begin()] = initial_hypothesis
     threshold = 0.005
-    for i, stack in enumerate(stacks[:-1]):
+    for i, stack in enumerate(stacks[:-2]):
         bestLogProb = -100000000
+        print(stack)
         # for h in sorted(stack.itervalues()):
             # bestLogProb = h.logprob if h.logprob > bestLogProb else bestLogProb
         for h in sorted(stack.itervalues(),key=lambda h: -h.logprob)[:opts.s]:
             # if h.logprob < bestLogProb * 1 / threshold: #threshold pruning on the stack of hypotheses
             #     continue
-
-            for j in xrange(i, len(f) + 1):
+            for j in xrange(0, len(f) + 1):
                 for k in xrange(j+1, len(f) + 1):
-                    if f[j:k] in tm:
+                    # print(h.lm_state, f[j:k], notIn(h.lm_state,f[j:k]))
+                    if f[j:k] in tm and notIn(h.lm_state, f[j:k]):
                         for phrase in tm[f[j:k]]:
                             logprob = h.logprob + phrase.logprob
                             lm_state = h.lm_state
@@ -68,10 +77,17 @@ for f in french:
                             new_hypothesis = hypothesis(
                                 logprob, lm_state, h, phrase)
                             # second case is recombination
-                            if lm_state not in stacks[j] or stacks[j][lm_state].logprob < logprob:
-                                stacks[j][lm_state] = new_hypothesis
+                            if lm_state not in stacks[i+1] or stacks[i+1][lm_state].logprob < logprob:
+                                print(new_hypothesis.lm_state)
+                                stacks[i+1][lm_state] = new_hypothesis
+    break
+    reverse_index = 0
+    for index, value in enumerate(stacks[::-1]):
+        if len(value) != 0:
+            reverse_index = -1 * (index + 1)
+            break
 
-    winner = max(stacks[-1].itervalues(), key=lambda h: h.logprob)
+    winner = max(stacks[reverse_index].itervalues(), key=lambda h: h.logprob)
     def extract_english(h):
         return "" if h.predecessor is None else "%s%s " % (extract_english(h.predecessor), h.phrase.english)
     print extract_english(winner)
