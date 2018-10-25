@@ -283,6 +283,7 @@ class LSTM:
         #c is context
         c = c.view(c.shape[0], -1)
         t = self.get_t(y, s, c, weights)
+        #print(t.shape, weights["Wo"].shape)
         return torch.matmul(weights["Wo"], t)
 
 class EncoderRNN(nn.Module):
@@ -335,10 +336,10 @@ class EncoderRNN(nn.Module):
         self.U_i_2 = nn.Parameter(self.lstm_R2L.matrix_map["Ui"], requires_grad=True)
         self.U_o_2 = nn.Parameter(self.lstm_R2L.matrix_map["Uo"], requires_grad=True)
         self.U_c_2 = nn.Parameter(self.lstm_R2L.matrix_map["Uc"], requires_grad=True)
-        self.b_f_2 = nn.Parameter(self.lstm_L2R.matrix_map["bf"], requires_grad=True)
-        self.b_i_2 = nn.Parameter(self.lstm_L2R.matrix_map["bi"], requires_grad=True)
-        self.b_o_2 = nn.Parameter(self.lstm_L2R.matrix_map["bo"], requires_grad=True)
-        self.b_c_2 = nn.Parameter(self.lstm_L2R.matrix_map["bc"], requires_grad=True)
+        self.b_f_2 = nn.Parameter(self.lstm_R2L.matrix_map["bf"], requires_grad=True)
+        self.b_i_2 = nn.Parameter(self.lstm_R2L.matrix_map["bi"], requires_grad=True)
+        self.b_o_2 = nn.Parameter(self.lstm_R2L.matrix_map["bo"], requires_grad=True)
+        self.b_c_2 = nn.Parameter(self.lstm_R2L.matrix_map["bc"], requires_grad=True)
         self.c_2 = self.lstm_R2L.matrix_map["c"]
         self.h_2 = self.lstm_R2L.matrix_map["h"]
 
@@ -440,8 +441,9 @@ class AttnDecoderRNN(nn.Module):
         self.dropout(log_softmax)
 
         #now we can get the next hidden state and attention weight since we've done a forward pass
-        hidden = self.decoder.s
-        attn_weights = self.decoder.alpha
+        hidden = self.weights["s"]
+        attn_weights = self.weights["alpha"]
+        #print(log_softmax.shape)
         return log_softmax, hidden, attn_weights
 
     def get_initial_hidden_state(self):
@@ -451,16 +453,28 @@ class AttnDecoderRNN(nn.Module):
 ######################################################################
 
 def train(input_tensor, target_tensor, encoder, decoder, optimizer, criterion, max_length=MAX_LENGTH):
-    encoder_hidden = encoder.get_initial_hidden_state()
+
+    encoder_hidden = torch.t(encoder.get_initial_hidden_state())
+    initial_output = torch.ones(decoder.output_size, 1, dtype=torch.double)
+    decoder_hidden = torch.ones(decoder.hidden_size, 1, dtype=torch.double)
 
     # make sure the encoder and decoder are in training mode so dropout is applied
     encoder.train()
     decoder.train()
 
     "*** YOUR CODE HERE ***"
-    embed = nn.Embedding(encoder.input_size, encoder.input_size)
-    print(embed(input_tensor))
-    print(target_tensor)
+    optimizer.zero_grad()
+    embed_input = nn.Embedding(encoder.input_size, encoder.input_size)
+    embed_output = nn.Embedding(decoder.output_size, decoder.output_size)
+    input_tensor = embed_input(input_tensor).double()
+    target_tensor = embed_output(target_tensor).double()
+
+    encoder_output = encoder.forward(input_tensor, encoder_hidden.double())
+    output_tensor = decoder.forward(initial_output, decoder_hidden, encoder_output)
+
+    loss = criterion(torch.softmax(output_tensor[0].view(-1), dim=0), torch.softmax(target_tensor[0].view(-1), dim=0))
+    loss.backward()
+    optimizer.step()
 
     return loss.item()
 
@@ -636,7 +650,7 @@ def main():
     # set up optimization/loss
     params = list(encoder.parameters()) + list(decoder.parameters())  # .parameters() returns generator
     optimizer = optim.Adam(params, lr=args.initial_learning_rate)
-    criterion = nn.NLLLoss()
+    criterion = nn.KLDivLoss()
 
     # optimizer may have state
     # if checkpointed, load saved state
