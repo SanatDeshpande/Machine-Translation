@@ -200,34 +200,40 @@ class LSTM:
             self.W_a = torch.rand(n_prime, n, dtype=torch.double, requires_grad=True)
             self.U_a = torch.rand(n_prime, 2*n, dtype=torch.double, requires_grad=True)
 
-    def forwardEncode(self, input, hidden):
+            #for convenience, idk if we need it
+            self.matrix_map = {"s": self.s, "alpha": self.alpha, "W": self.W, "Wz": self.W_z, "Wr": self.W_r,
+                               "Wo": self.W_o, "U": self.U, "Uz": self.U_z, "Ur": self.U_r, "Uo": self.U_o,  "C": self.C,
+                               "Cz": self.C_z, "Cr": self.C_r, "Co": self.C_o, "Vo": self.V_o, "Ws": self.W_s, "Va": self.V_a,
+                               "Wa": self.W_a, "Ua": self.U_a}
+
+    def forwardEncode(self, input, hidden, weights):
         #preprocessing
         input = torch.t(input)
         #hidden = hidden.view(-1, hidden.shape[0])
         hidden = torch.t(hidden)
 
-        f_t = torch.sigmoid(torch.matmul(torch.t(self.W_f), input)
-                            + torch.matmul(self.U_f, hidden)
-                            + self.b_f)
-        i_t = torch.sigmoid(torch.matmul(torch.t(self.W_i), input)
-                            + torch.matmul(self.U_i, hidden)
-                            + self.b_i)
-        o_t = torch.sigmoid(torch.matmul(torch.t(self.W_o), input)
-                            + torch.matmul(self.U_o, hidden)
-                            + self.b_o)
+        f_t = torch.sigmoid(torch.matmul(torch.t(weights["Wf"]), input)
+                            + torch.matmul(weights["Uf"], hidden)
+                            + weights["bf"])
+        i_t = torch.sigmoid(torch.matmul(torch.t(weights["Wi"]), input)
+                            + torch.matmul(weights["Ui"], hidden)
+                            + weights["bi"])
+        o_t = torch.sigmoid(torch.matmul(torch.t(weights["Wo"]), input)
+                            + torch.matmul(weights["Uo"], hidden)
+                            + weights["bo"])
         #here, we're computing an update to c_t with the previous value of c_t, initialized at 0
-        self.c = f_t * self.c + i_t * torch.tanh(torch.matmul(torch.t(self.W_c), input)
-                                                    + torch.matmul(self.U_c, hidden)
-                                                    + self.b_c)
-        return o_t * torch.tanh(self.c) #double check the activation function
+        weights["c"] = f_t * weights["c"] + i_t * torch.tanh(torch.matmul(torch.t(weights["Wc"]), input)
+                                                    + torch.matmul(weights["Uc"], hidden)
+                                                    + weights["bc"])
+        return o_t * torch.tanh(weights["c"]) #double check the activation function
 
-    def get_c(self, s, h):
+    def get_c(self, s, h, weights):
         #s is a singel hidden state
         #h is an array of all encoder-contexts (also confusingly called hidden states)
         e = torch.zeros(h.shape[0], dtype=torch.double)
         for i in range(h.shape[0]):
-            temp = torch.matmul(self.W_a, s) + torch.matmul(self.U_a, h[i]).view(self.U_a.shape[0] ,-1)
-            e[i] = torch.exp(torch.matmul(torch.t(self.V_a), torch.tanh(temp)))
+            temp = torch.matmul(weights["Wa"], s) + torch.matmul(weights["Ua"], h[i]).view(weights["Ua"].shape[0] ,-1)
+            e[i] = torch.exp(torch.matmul(torch.t(weights["Va"]), torch.tanh(temp)))
 
         #normalizing (softmax)
         sum_norm = torch.sum(e)
@@ -236,48 +242,48 @@ class LSTM:
         for i in range(e.shape[0]):
             h[i] *= e[i] #we are computing the array that will sum to our c_i
 
-        self.alpha = h #saving attention weights
+        weights["alpha"] = h #saving attention weights
         return torch.sum(h, dim=0) #this is c_i from the paper (the context!)
 
-    def get_r(self, y, s, c):
-        return torch.sigmoid(torch.matmul(torch.t(self.W_r), y)
-                             + torch.matmul(torch.t(self.U_r), s)
-                             + torch.matmul(torch.t(self.C_r), c))
+    def get_r(self, y, s, c, weights):
+        return torch.sigmoid(torch.matmul(torch.t(weights["Wr"]), y)
+                             + torch.matmul(torch.t(weights["Ur"]), s)
+                             + torch.matmul(torch.t(weights["Cr"]), c))
 
-    def get_z(self, y, s, c):
-        return torch.sigmoid(torch.matmul(torch.t(self.W_z), y)
-                             + torch.matmul(torch.t(self.U_z), s)
-                             + torch.matmul(torch.t(self.C_z), c))
+    def get_z(self, y, s, c, weights):
+        return torch.sigmoid(torch.matmul(torch.t(weights["Wz"]), y)
+                             + torch.matmul(torch.t(weights["Uz"]), s)
+                             + torch.matmul(torch.t(weights["Cz"]), c))
 
-    def get_s_tidle(self, y, s, c):
-        return torch.sigmoid(torch.matmul(torch.t(self.W), y)
-                             + torch.matmul(torch.t(self.U), self.get_r(y, s, c)*s)
-                             + torch.matmul(torch.t(self.C), c))
-    def get_s(self, y, s, c):
-        z = self.get_z(y, s, c)
-        s_tilde = self.get_s_tidle(y, s, c)
-        self.s = (1 - z) * s + z * s_tilde
-        return self.s
+    def get_s_tidle(self, y, s, c, weights):
+        return torch.sigmoid(torch.matmul(torch.t(weights["W"]), y)
+                             + torch.matmul(torch.t(weights["U"]), self.get_r(y, s, c, weights)*s)
+                             + torch.matmul(torch.t(weights["C"]), c))
+    def get_s(self, y, s, c, weights):
+        z = self.get_z(y, s, c, weights)
+        s_tilde = self.get_s_tidle(y, s, c, weights)
+        weights["s"] = (1 - z) * s + z * s_tilde
+        return weights["s"]
 
-    def get_t_tilde(self, y, s, c):
-        s = self.get_s(y, s, c)
-        return torch.sigmoid(torch.matmul(self.U_o, s)
-                             + torch.matmul(self.V_o, y)
-                             + torch.matmul(self.C_o, c))
-    def get_t(self, y, s, c):
-        t_tilde = self.get_t_tilde(y, s, c)
+    def get_t_tilde(self, y, s, c, weights):
+        s = self.get_s(y, s, c, weights)
+        return torch.sigmoid(torch.matmul(weights["Uo"], s)
+                             + torch.matmul(weights["Vo"], y)
+                             + torch.matmul(weights["Co"], c))
+    def get_t(self, y, s, c, weights):
+        t_tilde = self.get_t_tilde(y, s, c, weights)
         t = torch.zeros((int(t_tilde.shape[0]/2), 1), dtype=torch.double)
         for i in range(t.shape[0]):
             t[i] = torch.max(t_tilde[2*i], t_tilde[2*i+1])
         return t
 
-    def forwardDecode(self, y, s, c):
+    def forwardDecode(self, y, s, c, weights):
         #y is output
         #s is hidden
         #c is context
         c = c.view(c.shape[0], -1)
-        t = self.get_t(y, s, c)
-        return torch.matmul(self.W_o, t)
+        t = self.get_t(y, s, c, weights)
+        return torch.matmul(weights["Wo"], t)
 
 class EncoderRNN(nn.Module):
     """the class for the enoder RNN
@@ -302,8 +308,45 @@ class EncoderRNN(nn.Module):
         self.lstm_L2R = LSTM(input_size, hidden_size)
         self.lstm_R2L = LSTM(input_size, hidden_size)
 
-        #raise NotImplementedError
-        #return output, hidden
+        self.W_f_1 = nn.Parameter(self.lstm_L2R.matrix_map["Wf"], requires_grad=True)
+        self.W_i_1 = nn.Parameter(self.lstm_L2R.matrix_map["Wi"], requires_grad=True)
+        self.W_o_1 = nn.Parameter(self.lstm_L2R.matrix_map["Wo"], requires_grad=True)
+        self.W_c_1 = nn.Parameter(self.lstm_L2R.matrix_map["Wc"], requires_grad=True)
+        self.U_f_1 = nn.Parameter(self.lstm_L2R.matrix_map["Uf"], requires_grad=True)
+        self.U_i_1 = nn.Parameter(self.lstm_L2R.matrix_map["Ui"], requires_grad=True)
+        self.U_o_1 = nn.Parameter(self.lstm_L2R.matrix_map["Uo"], requires_grad=True)
+        self.U_c_1 = nn.Parameter(self.lstm_L2R.matrix_map["Uc"], requires_grad=True)
+        self.b_f_1 = nn.Parameter(self.lstm_L2R.matrix_map["bf"], requires_grad=True)
+        self.b_i_1 = nn.Parameter(self.lstm_L2R.matrix_map["bi"], requires_grad=True)
+        self.b_o_1 = nn.Parameter(self.lstm_L2R.matrix_map["bo"], requires_grad=True)
+        self.b_c_1 = nn.Parameter(self.lstm_L2R.matrix_map["bc"], requires_grad=True)
+        self.c_1 = self.lstm_L2R.matrix_map["c"]
+        self.h_1 = self.lstm_L2R.matrix_map["h"]
+
+        self.weights_1 = {"Wf": self.W_f_1, "Wi": self.W_i_1, "Wo": self.W_f_1, "Wc": self.W_c_1, "Uf": self.U_f_1,
+                      "Ui": self.U_i_1, "Uo": self.U_o_1, "Uc": self.U_c_1, "bf": self.b_f_1, "bi": self.b_i_1,
+                      "bo": self.b_o_1, "bc": self.b_c_1, "c": self.c_1, "h": self.h_1}
+
+        self.W_f_2 = nn.Parameter(self.lstm_R2L.matrix_map["Wf"], requires_grad=True)
+        self.W_i_2 = nn.Parameter(self.lstm_R2L.matrix_map["Wi"], requires_grad=True)
+        self.W_o_2 = nn.Parameter(self.lstm_R2L.matrix_map["Wo"], requires_grad=True)
+        self.W_c_2 = nn.Parameter(self.lstm_R2L.matrix_map["Wc"], requires_grad=True)
+        self.U_f_2 = nn.Parameter(self.lstm_R2L.matrix_map["Uf"], requires_grad=True)
+        self.U_i_2 = nn.Parameter(self.lstm_R2L.matrix_map["Ui"], requires_grad=True)
+        self.U_o_2 = nn.Parameter(self.lstm_R2L.matrix_map["Uo"], requires_grad=True)
+        self.U_c_2 = nn.Parameter(self.lstm_R2L.matrix_map["Uc"], requires_grad=True)
+        self.b_f_2 = nn.Parameter(self.lstm_L2R.matrix_map["bf"], requires_grad=True)
+        self.b_i_2 = nn.Parameter(self.lstm_L2R.matrix_map["bi"], requires_grad=True)
+        self.b_o_2 = nn.Parameter(self.lstm_L2R.matrix_map["bo"], requires_grad=True)
+        self.b_c_2 = nn.Parameter(self.lstm_L2R.matrix_map["bc"], requires_grad=True)
+        self.c_2 = self.lstm_R2L.matrix_map["c"]
+        self.h_2 = self.lstm_R2L.matrix_map["h"]
+
+        self.weights_2 = {"Wf": self.W_f_2, "Wi": self.W_i_2, "Wo": self.W_f_2, "Wc": self.W_c_2, "Uf": self.U_f_2,
+                      "Ui": self.U_i_2, "Uo": self.U_o_2, "Uc": self.U_c_2, "bf": self.b_f_2, "bi": self.b_i_2,
+                      "bo": self.b_o_2, "bc": self.b_c_2, "c": self.c_2, "h": self.h_2}
+
+
 
 
     def forward(self, input, hidden):
@@ -316,8 +359,8 @@ class EncoderRNN(nn.Module):
         hiddenL2R = hidden.view(-1, hidden.shape[0], hidden.shape[1])
         hiddenR2L = hidden.view(-1, hidden.shape[0], hidden.shape[1])
         for i in range(len(input)):
-            hiddenL2R = torch.cat((hiddenL2R, self.lstm_L2R.forwardEncode(input[i], hiddenL2R[-1]).view(-1, hidden.shape[0], hidden.shape[1])))
-            hiddenR2L = torch.cat((hiddenR2L, self.lstm_L2R.forwardEncode(input[len(input) - i - 1], hiddenR2L[-1]).view(-1, hidden.shape[0], hidden.shape[1])))
+            hiddenL2R = torch.cat((hiddenL2R, self.lstm_L2R.forwardEncode(input[i], hiddenL2R[-1], self.weights_1).view(-1, hidden.shape[0], hidden.shape[1])))
+            hiddenR2L = torch.cat((hiddenR2L, self.lstm_L2R.forwardEncode(input[len(input) - i - 1], hiddenR2L[-1], self.weights_2).view(-1, hidden.shape[0], hidden.shape[1])))
         combined = torch.zeros((hiddenL2R.shape[0],hiddenL2R.shape[2]*2), dtype=torch.double)
         for i in range(combined.shape[0]):
             combined[i] = torch.cat((hiddenL2R[i][0], hiddenR2L[i][0]))
@@ -352,6 +395,37 @@ class AttnDecoderRNN(nn.Module):
         #we don't initialize an embedding here since we're not taking in raw input
         self.decoder = LSTM(output_size, hidden_size, n_prime=max_length, encode=False)
 
+        self.s = nn.Parameter(self.decoder.matrix_map["s"], requires_grad=True)
+        self.alpha = nn.Parameter(self.decoder.matrix_map["alpha"], requires_grad=True)
+
+        self.W = nn.Parameter(self.decoder.matrix_map["W"], requires_grad=True)
+        self.W_z = nn.Parameter(self.decoder.matrix_map["Wz"], requires_grad=True)
+        self.W_r = nn.Parameter(self.decoder.matrix_map["Wr"], requires_grad=True)
+        self.W_o = nn.Parameter(self.decoder.matrix_map["Wo"], requires_grad=True)
+
+        self.U = nn.Parameter(self.decoder.matrix_map["U"], requires_grad=True)
+        self.U_z = nn.Parameter(self.decoder.matrix_map["Uz"], requires_grad=True)
+        self.U_r = nn.Parameter(self.decoder.matrix_map["Ur"], requires_grad=True)
+        self.U_o = nn.Parameter(self.decoder.matrix_map["Uo"], requires_grad=True)
+
+        self.C = nn.Parameter(self.decoder.matrix_map["C"], requires_grad=True)
+        self.C_z = nn.Parameter(self.decoder.matrix_map["Cz"], requires_grad=True)
+        self.C_r = nn.Parameter(self.decoder.matrix_map["Cr"], requires_grad=True)
+        self.C_o = nn.Parameter(self.decoder.matrix_map["Co"], requires_grad=True)
+
+        self.V_o = nn.Parameter(self.decoder.matrix_map["Vo"], requires_grad=True)
+
+        self.W_s = nn.Parameter(self.decoder.matrix_map["Ws"], requires_grad=True)
+
+        self.V_a = nn.Parameter(self.decoder.matrix_map["Va"], requires_grad=True)
+        self.W_a = nn.Parameter(self.decoder.matrix_map["Wa"], requires_grad=True)
+        self.U_a = nn.Parameter(self.decoder.matrix_map["Ua"], requires_grad=True)
+
+        self.weights = {"s": self.s, "alpha": self.alpha, "W": self.W, "Wz": self.W_z, "Wr": self.W_r,
+                           "Wo": self.W_o, "U": self.U, "Uz": self.U_z, "Ur": self.U_r, "Uo": self.U_o,  "C": self.C,
+                           "Cz": self.C_z, "Cr": self.C_r, "Co": self.C_o, "Vo": self.V_o, "Ws": self.W_s, "Va": self.V_a,
+                           "Wa": self.W_a, "Ua": self.U_a}
+
 
     def forward(self, output, hidden, encoder_outputs):
         """runs the forward pass of the decoder
@@ -361,8 +435,8 @@ class AttnDecoderRNN(nn.Module):
         """
 
         "*** YOUR CODE HERE ***"
-        context = self.decoder.get_c(hidden, encoder_outputs) #calculate context
-        log_softmax = torch.log(torch.softmax(self.decoder.forwardDecode(output, hidden, context), dim=0)) #do forward pass
+        context = self.decoder.get_c(hidden, encoder_outputs, self.weights) #calculate context
+        log_softmax = torch.log(torch.softmax(self.decoder.forwardDecode(output, hidden, context, self.weights), dim=0)) #do forward pass
         self.dropout(log_softmax)
 
         #now we can get the next hidden state and attention weight since we've done a forward pass
@@ -384,7 +458,9 @@ def train(input_tensor, target_tensor, encoder, decoder, optimizer, criterion, m
     decoder.train()
 
     "*** YOUR CODE HERE ***"
-    raise NotImplementedError
+    embed = nn.Embedding(encoder.input_size, encoder.input_size)
+    print(embed(input_tensor))
+    print(target_tensor)
 
     return loss.item()
 
