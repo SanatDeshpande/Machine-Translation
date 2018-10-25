@@ -160,8 +160,8 @@ class LSTM:
             self.b_o = torch.rand(n, 1, dtype=torch.double, requires_grad=True)
             self.b_c = torch.rand(n, 1, dtype=torch.double, requires_grad=True)
 
-            self.c = torch.tensor(0, dtype=torch.double)
-            self.h = torch.tensor(0, dtype=torch.double)
+            self.c = torch.tensor(0, dtype=torch.double, requires_grad=False)
+            self.h = torch.tensor(0, dtype=torch.double, requires_grad=False)
 
             #for convenience, idk if we need it
             self.matrix_map = {"Wf": self.W_f, "Wi": self.W_i, "Wo": self.W_f, "Wc": self.W_c, "Uf": self.U_f,
@@ -193,7 +193,7 @@ class LSTM:
 
             self.V_o = torch.rand(2*l, m, dtype=torch.double, requires_grad=True)
 
-            self.W_s = torch.rand(n, n, dtype=torch.double, requires_grad=True) #for initializing hidden state with h1
+            #self.W_s = torch.rand(n, n, dtype=torch.double, requires_grad=True) #for initializing hidden state with h1
 
             #for attention calculation
             self.V_a = torch.rand(n_prime, 1, dtype=torch.double, requires_grad=True)
@@ -203,7 +203,7 @@ class LSTM:
             #for convenience, idk if we need it
             self.matrix_map = {"s": self.s, "alpha": self.alpha, "W": self.W, "Wz": self.W_z, "Wr": self.W_r,
                                "Wo": self.W_o, "U": self.U, "Uz": self.U_z, "Ur": self.U_r, "Uo": self.U_o,  "C": self.C,
-                               "Cz": self.C_z, "Cr": self.C_r, "Co": self.C_o, "Vo": self.V_o, "Ws": self.W_s, "Va": self.V_a,
+                               "Cz": self.C_z, "Cr": self.C_r, "Co": self.C_o, "Vo": self.V_o, "Va": self.V_a,
                                "Wa": self.W_a, "Ua": self.U_a}
 
     def forwardEncode(self, input, hidden, weights):
@@ -222,7 +222,7 @@ class LSTM:
                             + torch.matmul(weights["Uo"], hidden)
                             + weights["bo"])
         #here, we're computing an update to c_t with the previous value of c_t, initialized at 0
-        weights["c"] = f_t * weights["c"] + i_t * torch.tanh(torch.matmul(torch.t(weights["Wc"]), input)
+        weights["c"].data = f_t * weights["c"] + i_t * torch.tanh(torch.matmul(torch.t(weights["Wc"]), input)
                                                     + torch.matmul(weights["Uc"], hidden)
                                                     + weights["bc"])
         return o_t * torch.tanh(weights["c"]) #double check the activation function
@@ -232,17 +232,17 @@ class LSTM:
         #h is an array of all encoder-contexts (also confusingly called hidden states)
         e = torch.zeros(h.shape[0], dtype=torch.double)
         for i in range(h.shape[0]):
-            temp = torch.matmul(weights["Wa"], s) + torch.matmul(weights["Ua"], h[i]).view(weights["Ua"].shape[0] ,-1)
-            e[i] = torch.exp(torch.matmul(torch.t(weights["Va"]), torch.tanh(temp)))
+            e.data[i] = e[i] + torch.exp(torch.matmul(torch.t(weights["Va"]),
+                          torch.tanh(torch.matmul(weights["Wa"], s) + torch.matmul(weights["Ua"], h[i]).view(weights["Ua"].shape[0] ,-1))))
 
         #normalizing (softmax)
         sum_norm = torch.sum(e)
         for i in range(e.shape[0]):
-            e[i] /= sum_norm #THESE ARE NOW OUR APHAS
+            e.data[i] = e.data[i] / sum_norm #THESE ARE NOW OUR APHAS
         for i in range(e.shape[0]):
-            h[i] *= e[i] #we are computing the array that will sum to our c_i
+            h.data[i] = h.data[i] * e.data[i] #we are computing the array that will sum to our c_i
 
-        weights["alpha"] = h #saving attention weights
+        weights["alpha"].data = h #saving attention weights
         return torch.sum(h, dim=0) #this is c_i from the paper (the context!)
 
     def get_r(self, y, s, c, weights):
@@ -262,11 +262,11 @@ class LSTM:
     def get_s(self, y, s, c, weights):
         z = self.get_z(y, s, c, weights)
         s_tilde = self.get_s_tidle(y, s, c, weights)
-        weights["s"] = (1 - z) * s + z * s_tilde
+        weights["s"].data = (1 - z) * s + z * s_tilde
         return weights["s"]
 
     def get_t_tilde(self, y, s, c, weights):
-        s = self.get_s(y, s, c, weights)
+        s.data = self.get_s(y, s, c, weights)
         return torch.sigmoid(torch.matmul(weights["Uo"], s)
                              + torch.matmul(weights["Vo"], y)
                              + torch.matmul(weights["Co"], c))
@@ -274,7 +274,7 @@ class LSTM:
         t_tilde = self.get_t_tilde(y, s, c, weights)
         t = torch.zeros((int(t_tilde.shape[0]/2), 1), dtype=torch.double)
         for i in range(t.shape[0]):
-            t[i] = torch.max(t_tilde[2*i], t_tilde[2*i+1])
+            t.data[i] = torch.max(t_tilde[2*i], t_tilde[2*i+1])
         return t
 
     def forwardDecode(self, y, s, c, weights):
@@ -356,22 +356,25 @@ class EncoderRNN(nn.Module):
         """
         "*** YOUR CODE HERE ***"
         #makes deep copies of tensor (dw, I checked)
-        #print(hidden.shape)
+        if len(input.shape) == 2:
+            input = torch.t(input).view(-1, input.shape[1], input.shape[0]).double()
+            #print(input.shape)
+
         hiddenL2R = hidden.view(-1, hidden.shape[0], hidden.shape[1])
         hiddenR2L = hidden.view(-1, hidden.shape[0], hidden.shape[1])
         for i in range(len(input)):
-            hiddenL2R = torch.cat((hiddenL2R, self.lstm_L2R.forwardEncode(input[i], hiddenL2R[-1], self.weights_1).view(-1, hidden.shape[0], hidden.shape[1])))
-            hiddenR2L = torch.cat((hiddenR2L, self.lstm_L2R.forwardEncode(input[len(input) - i - 1], hiddenR2L[-1], self.weights_2).view(-1, hidden.shape[0], hidden.shape[1])))
+            hiddenL2R.data = torch.cat((hiddenL2R, self.lstm_L2R.forwardEncode(input[i], hiddenL2R[-1], self.weights_1).view(-1, hidden.shape[0], hidden.shape[1])))
+            hiddenR2L.data = torch.cat((hiddenR2L, self.lstm_L2R.forwardEncode(input[len(input) - i - 1], hiddenR2L[-1], self.weights_2).view(-1, hidden.shape[0], hidden.shape[1])))
         combined = torch.zeros((hiddenL2R.shape[0],hiddenL2R.shape[2]*2), dtype=torch.double)
         for i in range(combined.shape[0]):
-            combined[i] = torch.cat((hiddenL2R[i][0], hiddenR2L[i][0]))
+            combined[i].data = torch.cat((hiddenL2R[i][0], hiddenR2L[i][0]))
         #raise NotImplementedError
         return combined
 
-    def rachet_unit_test(self):
-        input = torch.tensor([[i for i in range(self.input_size)]], dtype=torch.double)
-        hidden = torch.tensor([[i*2 for i in range(self.hidden_size)]], dtype=torch.double)
-        return self.forward([input, input, input], hidden)
+    # def rachet_unit_test(self):
+    #     input = torch.tensor([[i for i in range(self.input_size)]], dtype=torch.double)
+    #     hidden = torch.tensor([[i*2 for i in range(self.hidden_size)]], dtype=torch.double)
+    #     return self.forward([input, input, input], hidden)
 
     def get_initial_hidden_state(self):
         return torch.zeros(self.hidden_size, 1, device=device)
@@ -416,7 +419,7 @@ class AttnDecoderRNN(nn.Module):
 
         self.V_o = nn.Parameter(self.decoder.matrix_map["Vo"], requires_grad=True)
 
-        self.W_s = nn.Parameter(self.decoder.matrix_map["Ws"], requires_grad=True)
+        #self.W_s = nn.Parameter(self.decoder.matrix_map["Ws"], requires_grad=True)
 
         self.V_a = nn.Parameter(self.decoder.matrix_map["Va"], requires_grad=True)
         self.W_a = nn.Parameter(self.decoder.matrix_map["Wa"], requires_grad=True)
@@ -424,7 +427,7 @@ class AttnDecoderRNN(nn.Module):
 
         self.weights = {"s": self.s, "alpha": self.alpha, "W": self.W, "Wz": self.W_z, "Wr": self.W_r,
                            "Wo": self.W_o, "U": self.U, "Uz": self.U_z, "Ur": self.U_r, "Uo": self.U_o,  "C": self.C,
-                           "Cz": self.C_z, "Cr": self.C_r, "Co": self.C_o, "Vo": self.V_o, "Ws": self.W_s, "Va": self.V_a,
+                           "Cz": self.C_z, "Cr": self.C_r, "Co": self.C_o, "Vo": self.V_o, "Va": self.V_a,
                            "Wa": self.W_a, "Ua": self.U_a}
 
 
@@ -492,6 +495,7 @@ def translate(encoder, decoder, sentence, src_vocab, tgt_vocab, max_length=MAX_L
     decoder.eval()
 
     with torch.no_grad():
+        #print(sentence)
         input_tensor = tensor_from_sentence(src_vocab, sentence)
         input_length = input_tensor.size()[0]
         encoder_hidden = encoder.get_initial_hidden_state()
@@ -501,6 +505,7 @@ def translate(encoder, decoder, sentence, src_vocab, tgt_vocab, max_length=MAX_L
         for ei in range(input_length):
             encoder_output, encoder_hidden = encoder(input_tensor[ei],
                                                      encoder_hidden)
+
             encoder_outputs[ei] += encoder_output[0, 0]
 
         decoder_input = torch.tensor([[SOS_index]], device=device)
@@ -589,11 +594,11 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--hidden_size', default=256, type=int,
                     help='hidden size of encoder/decoder, also word vector size')
-    ap.add_argument('--n_iters', default=100000, type=int,
+    ap.add_argument('--n_iters', default=5, type=int,
                     help='total number of examples to train on')
     ap.add_argument('--print_every', default=5000, type=int,
                     help='print loss info every this many training examples')
-    ap.add_argument('--checkpoint_every', default=10000, type=int,
+    ap.add_argument('--checkpoint_every', default=100, type=int,
                     help='write out checkpoint every this many training examples')
     ap.add_argument('--initial_learning_rate', default=0.001, type=int,
                     help='initial learning rate')
@@ -668,8 +673,8 @@ def main():
         loss = train(input_tensor, target_tensor, encoder,
                      decoder, optimizer, criterion)
         print_loss_total += loss
-
         if iter_num % args.checkpoint_every == 0:
+            print(loss)
             state = {'iter_num': iter_num,
                      'enc_state': encoder.state_dict(),
                      'dec_state': decoder.state_dict(),
