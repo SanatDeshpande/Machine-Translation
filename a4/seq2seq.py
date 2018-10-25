@@ -5,7 +5,7 @@
 This code is based on the tutorial by Sean Robertson <https://github.com/spro/practical-pytorch> found here:
 https://pytorch.org/tutorials/intermediate/seq2seq_translation_tutorial.html
 
-Students *MAY NOT* view the above tutorial or use it as a reference in any way. 
+Students *MAY NOT* view the above tutorial or use it as a reference in any way.
 """
 
 
@@ -18,10 +18,10 @@ import time
 from io import open
 
 import matplotlib
-#if you are running on the gradx/ugradx/ another cluster, 
+#if you are running on the gradx/ugradx/ another cluster,
 #you will need the following line
 #if you run on a local machine, you can comment it out
-matplotlib.use('agg') 
+matplotlib.use('agg')
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 import torch
@@ -35,7 +35,7 @@ logging.basicConfig(level=logging.DEBUG,
                     format='%(asctime)s %(levelname)s %(message)s')
 
 # we are forcing the use of cpu, if you have access to a gpu, you can set the flag to "cuda"
-# make sure you are very careful if you are using a gpu on a shared cluster/grid, 
+# make sure you are very careful if you are using a gpu on a shared cluster/grid,
 # it can be very easy to confict with other people's jobs.
 # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 device = torch.device("cpu")
@@ -80,7 +80,7 @@ def split_lines(input_file):
     first src sentence|||first tgt sentence
     second src sentence|||second tgt sentence
     into a list of things like
-    [("first src sentence", "first tgt sentence"), 
+    [("first src sentence", "first tgt sentence"),
      ("second src sentence", "second tgt sentence")]
     """
     logging.info("Reading lines of %s...", input_file)
@@ -134,6 +134,145 @@ def tensors_from_pair(src_vocab, tgt_vocab, pair):
 
 ######################################################################
 
+class LSTM:
+    def __init__(self, m, n, n_prime=0, encode=True):
+        if encode:
+            #W refers to an input->hidden matrix
+            #U refers to a hidden->hidden matrix
+            #b refers to bias
+            #all randomly initialized
+            #let c_o and h_o be initialized as 0
+            self.input_size = m
+            self.hidden_size = n
+
+            self.W_f = torch.rand(m, n, dtype=torch.double, requires_grad=True)
+            self.W_i = torch.rand(m, n, dtype=torch.double, requires_grad=True)
+            self.W_o = torch.rand(m, n, dtype=torch.double, requires_grad=True)
+            self.W_c = torch.rand(m, n, dtype=torch.double, requires_grad=True)
+
+            self.U_f = torch.rand(n, n, dtype=torch.double, requires_grad=True)
+            self.U_i = torch.rand(n, n, dtype=torch.double, requires_grad=True)
+            self.U_o = torch.rand(n, n, dtype=torch.double, requires_grad=True)
+            self.U_c = torch.rand(n, n, dtype=torch.double, requires_grad=True)
+
+            self.b_f = torch.rand(n, 1, dtype=torch.double, requires_grad=True)
+            self.b_i = torch.rand(n, 1, dtype=torch.double, requires_grad=True)
+            self.b_o = torch.rand(n, 1, dtype=torch.double, requires_grad=True)
+            self.b_c = torch.rand(n, 1, dtype=torch.double, requires_grad=True)
+
+            self.c = torch.tensor(0, dtype=torch.double)
+            self.h = torch.tensor(0, dtype=torch.double)
+
+            #for convenience, idk if we need it
+            self.matrix_map = {"Wf": self.W_f, "Wi": self.W_i, "Wo": self.W_f, "Wc": self.W_c, "Uf": self.U_f,
+                          "Ui": self.U_i, "Uo": self.U_o, "Uc": self.U_c, "bf": self.b_f, "bi": self.b_i,
+                          "bo": self.b_o, "bc": self.b_c, "c": self.c, "h": self.h}
+        else:
+            l = n*2 #this is weird, just roll with it
+            self.output_size = m
+            self.hidden_size = n
+            self.output_lenght = n_prime #num tokens in output
+
+            self.W = torch.rand(m, n, dtype=torch.double, requires_grad=True)
+            self.W_z = torch.rand(m, n, dtype=torch.double, requires_grad=True)
+            self.W_r = torch.rand(m, n, dtype=torch.double, requires_grad=True)
+            self.W_o = torch.rand(m, l, dtype=torch.double, requires_grad=True)
+
+            self.U = torch.rand(n, n, dtype=torch.double, requires_grad=True)
+            self.U_z = torch.rand(n, n, dtype=torch.double, requires_grad=True)
+            self.U_r = torch.rand(n, n, dtype=torch.double, requires_grad=True)
+            self.U_o = torch.rand(2*l, n, dtype=torch.double, requires_grad=True)
+
+            self.C = torch.rand(2*n, n, dtype=torch.double, requires_grad=True)
+            self.C_z = torch.rand(2*n, n, dtype=torch.double, requires_grad=True)
+            self.C_r = torch.rand(2*n, n, dtype=torch.double, requires_grad=True)
+            self.C_o = torch.rand(2*l, 2*n, dtype=torch.double, requires_grad=True)
+
+            self.V_o = torch.rand(2*l, m, dtype=torch.double, requires_grad=True)
+
+            self.W_s = torch.rand(n, n, dtype=torch.double, requires_grad=True) #for initializing hidden state with h1
+
+            #for attention calculation
+            self.V_a = torch.rand(n_prime, 1, dtype=torch.double, requires_grad=True)
+            self.W_a = torch.rand(n_prime, n, dtype=torch.double, requires_grad=True)
+            self.U_a = torch.rand(n_prime, 2*n, dtype=torch.double, requires_grad=True)
+
+    def forwardEncode(self, input, hidden):
+        #preprocessing
+        input = torch.t(input)
+        #hidden = hidden.view(-1, hidden.shape[0])
+        hidden = torch.t(hidden)
+
+        f_t = torch.sigmoid(torch.matmul(torch.t(self.W_f), input)
+                            + torch.matmul(self.U_f, hidden)
+                            + self.b_f)
+        i_t = torch.sigmoid(torch.matmul(torch.t(self.W_i), input)
+                            + torch.matmul(self.U_i, hidden)
+                            + self.b_i)
+        o_t = torch.sigmoid(torch.matmul(torch.t(self.W_o), input)
+                            + torch.matmul(self.U_o, hidden)
+                            + self.b_o)
+        #here, we're computing an update to c_t with the previous value of c_t, initialized at 0
+        self.c = f_t * self.c + i_t * torch.tanh(torch.matmul(torch.t(self.W_c), input)
+                                                    + torch.matmul(self.U_c, hidden)
+                                                    + self.b_c)
+        return o_t * torch.tanh(self.c) #double check the activation function
+
+    def get_c(self, s, h):
+        #s is a singel hidden state
+        #h is an array of all encoder-contexts (also confusingly called hidden states)
+        e = torch.zeros(h.shape[0], dtype=torch.double)
+        for i in range(h.shape[0]):
+            temp = torch.matmul(self.W_a, s) + torch.matmul(self.U_a, h[i]).view(self.U_a.shape[0] ,-1)
+            e[i] = torch.exp(torch.matmul(torch.t(self.V_a), torch.tanh(temp)))
+
+        #normalizing (softmax)
+        sum_norm = torch.sum(e)
+        for i in range(e.shape[0]):
+            e[i] /= sum_norm #THESE ARE NOW OUR APHAS
+        for i in range(e.shape[0]):
+            h[i] *= e[i] #we are computing the array that will sum to our c_i
+
+        return torch.sum(h, dim=0) #this is c_i from the paper (the context!)
+
+    def get_r(self, y, s, c):
+        return torch.sigmoid(torch.matmul(torch.t(self.W_r), y)
+                             + torch.matmul(torch.t(self.U_r), s)
+                             + torch.matmul(torch.t(self.C_r), c))
+
+    def get_z(self, y, s, c):
+        return torch.sigmoid(torch.matmul(torch.t(self.W_z), y)
+                             + torch.matmul(torch.t(self.U_z), s)
+                             + torch.matmul(torch.t(self.C_z), c))
+
+    def get_s_tidle(self, y, s, c):
+        return torch.sigmoid(torch.matmul(torch.t(self.W), y)
+                             + torch.matmul(torch.t(self.U), self.get_r(y, s, c)*s)
+                             + torch.matmul(torch.t(self.C), c))
+    def get_s(self, y, s, c):
+        z = self.get_z(y, s, c)
+        s_tilde = self.get_s_tidle(y, s, c)
+        return (1 - z) * s + z * s_tilde
+
+    def get_t_tilde(self, y, s, c):
+        s = self.get_s(y, s, c)
+        return torch.sigmoid(torch.matmul(self.U_o, s)
+                             + torch.matmul(self.V_o, y)
+                             + torch.matmul(self.C_o, c))
+    def get_t(self, y, s, c):
+        t_tilde = self.get_t_tilde(y, s, c)
+        t = torch.zeros((int(t_tilde.shape[0]/2), 1), dtype=torch.double)
+        for i in range(t.shape[0]):
+            t[i] = torch.max(t_tilde[2*i], t_tilde[2*i+1])
+        return t
+
+    def forwardDecode(self, y, s, c):
+        #y is output
+        #s is hidden
+        #c is context
+        c = c.view(c.shape[0], -1)
+        t = self.get_t(y, s, c)
+        return torch.matmul(self.W_o, t)
 
 class EncoderRNN(nn.Module):
     """the class for the enoder RNN
@@ -141,15 +280,21 @@ class EncoderRNN(nn.Module):
     def __init__(self, input_size, hidden_size):
         super(EncoderRNN, self).__init__()
         self.hidden_size = hidden_size
+        self.input_size = input_size
         """Initilize a word embedding and bi-directional LSTM encoder
-        For this assignment, you should *NOT* use nn.LSTM. 
+        For this assignment, you should *NOT* use nn.LSTM.
         Instead, you should implement the equations yourself.
         See, for example, https://en.wikipedia.org/wiki/Long_short-term_memory#LSTM_with_a_forget_gate
         You should make your LSTM modular and re-use it in the Decoder.
         """
         "*** YOUR CODE HERE ***"
-        raise NotImplementedError
-        return output, hidden
+        self.embedding = torch.zeros(1, input_size, dtype=torch.double)
+        #bi-directional
+        self.lstm_L2R = LSTM(input_size, hidden_size)
+        self.lstm_R2L = LSTM(input_size, hidden_size)
+
+        #raise NotImplementedError
+        #return output, hidden
 
 
     def forward(self, input, hidden):
@@ -157,15 +302,30 @@ class EncoderRNN(nn.Module):
         returns the output and the hidden state
         """
         "*** YOUR CODE HERE ***"
-        raise NotImplementedError
-        return output, hidden
+        #makes deep copies of tensor (dw, I checked)
+        #print(hidden.shape)
+        hiddenL2R = hidden.view(-1, hidden.shape[0], hidden.shape[1])
+        hiddenR2L = hidden.view(-1, hidden.shape[0], hidden.shape[1])
+        for i in range(len(input)):
+            hiddenL2R = torch.cat((hiddenL2R, self.lstm_L2R.forwardEncode(input[i], hiddenL2R[-1]).view(-1, hidden.shape[0], hidden.shape[1])))
+            hiddenR2L = torch.cat((hiddenR2L, self.lstm_L2R.forwardEncode(input[len(input) - i - 1], hiddenR2L[-1]).view(-1, hidden.shape[0], hidden.shape[1])))
+        combined = torch.zeros((hiddenL2R.shape[0],hiddenL2R.shape[2]*2), dtype=torch.double)
+        for i in range(combined.shape[0]):
+            combined[i] = torch.cat((hiddenL2R[i][0], hiddenR2L[i][0]))
+        #raise NotImplementedError
+        return combined
+
+    def rachet_unit_test(self):
+        input = torch.tensor([[i for i in range(self.input_size)]], dtype=torch.double)
+        hidden = torch.tensor([[i*2 for i in range(self.hidden_size)]], dtype=torch.double)
+        return self.forward([input, input, input], hidden)
 
     def get_initial_hidden_state(self):
-        return torch.zeros(1, 1, self.hidden_size, device=device)
+        return torch.zeros(self.hidden_size, 1, device=device)
 
 
 class AttnDecoderRNN(nn.Module):
-    """the class for the decoder 
+    """the class for the decoder
     """
     def __init__(self, hidden_size, output_size, dropout_p=0.1, max_length=MAX_LENGTH):
         super(AttnDecoderRNN, self).__init__()
@@ -175,7 +335,7 @@ class AttnDecoderRNN(nn.Module):
         self.max_length = max_length
 
         self.dropout = nn.Dropout(self.dropout_p)
-        
+
         """Initilize your word embedding, decoder LSTM, and weights needed for your attention here
         """
         "*** YOUR CODE HERE ***"
@@ -186,10 +346,10 @@ class AttnDecoderRNN(nn.Module):
     def forward(self, input, hidden, encoder_outputs):
         """runs the forward pass of the decoder
         returns the log_softmax, hidden state, and attn_weights
-        
+
         Dropout (self.dropout) should be applied to the word embeddings.
         """
-        
+
         "*** YOUR CODE HERE ***"
         raise NotImplementedError
         return log_softmax, hidden, attn_weights
@@ -210,7 +370,7 @@ def train(input_tensor, target_tensor, encoder, decoder, optimizer, criterion, m
     "*** YOUR CODE HERE ***"
     raise NotImplementedError
 
-    return loss.item() 
+    return loss.item()
 
 
 
@@ -291,12 +451,12 @@ def translate_random_sentence(encoder, decoder, pairs, src_vocab, tgt_vocab, n=1
 ######################################################################
 
 def show_attention(input_sentence, output_words, attentions):
-    """visualize the attention mechanism. And save it to a file. 
+    """visualize the attention mechanism. And save it to a file.
     Plots should look roughly like this: https://i.stack.imgur.com/PhtQi.png
     You plots should include axis labels and a legend.
     you may want to use matplotlib.
     """
-    
+
     "*** YOUR CODE HERE ***"
     raise NotImplementedError
 
@@ -355,7 +515,7 @@ def main():
     # process the training, dev, test files
 
     # Create vocab from training data, or load if checkpointed
-    # also set iteration 
+    # also set iteration
     if args.load_checkpoint is not None:
         state = torch.load(args.load_checkpoint[0])
         iter_num = state['iter_num']
@@ -366,7 +526,6 @@ def main():
         src_vocab, tgt_vocab = make_vocabs(args.src_lang,
                                            args.tgt_lang,
                                            args.train_file)
-
     encoder = EncoderRNN(src_vocab.n_words, args.hidden_size).to(device)
     decoder = AttnDecoderRNN(args.hidden_size, tgt_vocab.n_words, dropout_p=0.1).to(device)
 
