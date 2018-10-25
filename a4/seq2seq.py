@@ -171,7 +171,10 @@ class LSTM:
             l = n*2 #this is weird, just roll with it
             self.output_size = m
             self.hidden_size = n
-            self.output_lenght = n_prime #num tokens in output
+            self.output_length = n_prime #num tokens in output
+
+            self.s = None #initialized as None here (really it will be W_s*h_1)
+            self.alpha = None #attention weights that need to be accessed
 
             self.W = torch.rand(m, n, dtype=torch.double, requires_grad=True)
             self.W_z = torch.rand(m, n, dtype=torch.double, requires_grad=True)
@@ -233,6 +236,7 @@ class LSTM:
         for i in range(e.shape[0]):
             h[i] *= e[i] #we are computing the array that will sum to our c_i
 
+        self.alpha = h #saving attention weights
         return torch.sum(h, dim=0) #this is c_i from the paper (the context!)
 
     def get_r(self, y, s, c):
@@ -252,7 +256,8 @@ class LSTM:
     def get_s(self, y, s, c):
         z = self.get_z(y, s, c)
         s_tilde = self.get_s_tidle(y, s, c)
-        return (1 - z) * s + z * s_tilde
+        self.s = (1 - z) * s + z * s_tilde
+        return self.s
 
     def get_t_tilde(self, y, s, c):
         s = self.get_s(y, s, c)
@@ -288,7 +293,11 @@ class EncoderRNN(nn.Module):
         You should make your LSTM modular and re-use it in the Decoder.
         """
         "*** YOUR CODE HERE ***"
-        self.embedding = torch.zeros(1, input_size, dtype=torch.double)
+        #We are choosing to initialize the embeddings during training itself
+        # This is so that we only worry about the embedded vectors as inputs and outputs for the sake of the
+        # encoder-decoder. For example, an input sentence's words would be embedded, and then the list of tensors
+        # would be fed into the encoder. Upon output from the decoder, the embeddings would be decoded.
+
         #bi-directional
         self.lstm_L2R = LSTM(input_size, hidden_size)
         self.lstm_R2L = LSTM(input_size, hidden_size)
@@ -339,11 +348,12 @@ class AttnDecoderRNN(nn.Module):
         """Initilize your word embedding, decoder LSTM, and weights needed for your attention here
         """
         "*** YOUR CODE HERE ***"
-        raise NotImplementedError
+        #self.embedding = torch.zeros(1, output_size, dtype=torch.double)
+        #we don't initialize an embedding here since we're not taking in raw input
+        self.decoder = LSTM(output_size, hidden_size, n_prime=max_length, encode=False)
 
-        self.out = nn.Linear(self.hidden_size, self.output_size)
 
-    def forward(self, input, hidden, encoder_outputs):
+    def forward(self, output, hidden, encoder_outputs):
         """runs the forward pass of the decoder
         returns the log_softmax, hidden state, and attn_weights
 
@@ -351,7 +361,13 @@ class AttnDecoderRNN(nn.Module):
         """
 
         "*** YOUR CODE HERE ***"
-        raise NotImplementedError
+        context = self.decoder.get_c(hidden, encoder_outputs) #calculate context
+        log_softmax = torch.log(torch.softmax(self.decoder.forwardDecode(output, hidden, context), dim=0)) #do forward pass
+        self.dropout(log_softmax)
+
+        #now we can get the next hidden state and attention weight since we've done a forward pass
+        hidden = self.decoder.s
+        attn_weights = self.decoder.alpha
         return log_softmax, hidden, attn_weights
 
     def get_initial_hidden_state(self):
@@ -526,6 +542,7 @@ def main():
         src_vocab, tgt_vocab = make_vocabs(args.src_lang,
                                            args.tgt_lang,
                                            args.train_file)
+
     encoder = EncoderRNN(src_vocab.n_words, args.hidden_size).to(device)
     decoder = AttnDecoderRNN(args.hidden_size, tgt_vocab.n_words, dropout_p=0.1).to(device)
 
