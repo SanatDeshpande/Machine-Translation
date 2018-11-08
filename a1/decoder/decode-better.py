@@ -5,16 +5,6 @@ import models
 import math
 from collections import namedtuple
 
-def notAlreadyTranslated(a, j, k):
-    if a is None:
-        return True
-
-    for index in a:
-        for index2 in range(j, k):
-            if index == index2:
-                return False
-    return True
-
 
 optparser = optparse.OptionParser()
 optparser.add_option("-i", "--input", dest="input", default="data/input",
@@ -45,7 +35,17 @@ for word in set(sum(french, ())):
 
 sys.stderr.write("Decoding %s...\n" % (opts.input,))
 
-addPhraseSwapping = False if len(sys.argv) < 2 else True
+
+def notAlreadyTranslated(a, j, k):
+    if a is None:
+        return True
+
+    for index in a:
+        for index2 in range(j, k):
+            if index == index2:
+                return False
+    return True
+
 
 for f in french:
     # The following code implements a monotone decoding
@@ -60,40 +60,45 @@ for f in french:
     stacks[0][lm.begin()] = initial_hypothesis
     threshold = 0.005
     for i, stack in enumerate(stacks[:-1]):
-        bestLogProb = -100000000
+        # This is what we had for Threshold Pruning but it skewed our results so we decided to omit it
+        # bestLogProb = -100000000
         # for h in sorted(stack.itervalues()):
             # bestLogProb = h.logprob if h.logprob > bestLogProb else bestLogProb
-        for h in sorted(stack.itervalues(),key=lambda h: -h.logprob)[:opts.s]:
+        for h in sorted(stack.itervalues(), key=lambda h: -h.logprob)[:opts.s]:
             # if h.logprob < bestLogProb * 1 / threshold: #threshold pruning on the stack of hypotheses
             #     continue
             for j in xrange(0, len(f)):
-                for k in xrange(j+1, len(f) + 1):
-                    # print(h.wordsTranslated)
-                    # print(range(j, k+1))
-                    # print(notAlreadyTranslated(h.wordsTranslated, j, k))
-                    # if notAlreadyTranslated(h.wordsTranslated, j, k):
-                        # print(notAlreadyTranslated(h.wordsTranslated, j, k))
-                        # print(h.wordsTranslated, j, k)
-                        # print("\n")
+                for k in xrange(j + 1, len(f) + 1):
                     if f[j:k] in tm and notAlreadyTranslated(h.wordsTranslated, j, k):
                         for phrase in tm[f[j:k]]:
                             distance = abs(k - i - 1)
                             logprob = h.logprob + phrase.logprob
-                            logprob += 0 if distance == 0 else math.log(distance)
+                            # Similarily when we chose to penalize hypothesis with bigger distance swapping we got poor results
+                            # logprob += 0 if distance == 0 else math.log(distance)
                             lm_state = h.lm_state
                             for word in phrase.english.split():
-                                (lm_state, word_logprob) = lm.score(lm_state, word)
+                                (lm_state, word_logprob) = lm.score(
+                                    lm_state, word)
                                 logprob += word_logprob
                             logprob += lm.end(lm_state) if k == len(f) else 0.0
-                            new_words_translated = range(j,k) if h.wordsTranslated is None else h.wordsTranslated + range(j, k)
+                            new_words_translated = range(
+                                j, k) if h.wordsTranslated is None else h.wordsTranslated + range(j, k)
                             new_hypothesis = hypothesis(
                                 logprob, lm_state, h, phrase, new_words_translated)
                             # second case is recombination
-                            # print((new_hypothesis.wordsTranslated), len(new_hypothesis.wordsTranslated))
                             if lm_state not in stacks[len(new_hypothesis.wordsTranslated)] or stacks[len(new_hypothesis.wordsTranslated)][lm_state].logprob < logprob:
-                                stacks[len(new_hypothesis.wordsTranslated)][lm_state] = new_hypothesis
+                                stacks[len(new_hypothesis.wordsTranslated)
+                                       ][lm_state] = new_hypothesis
 
     winner = max(stacks[-1].itervalues(), key=lambda h: h.logprob)
+
     def extract_english(h):
         return "" if h.predecessor is None else "%s%s " % (extract_english(h.predecessor), h.phrase.english)
     print extract_english(winner)
+
+    if opts.verbose:
+        def extract_tm_logprob(h):
+            return 0.0 if h.predecessor is None else h.phrase.logprob + extract_tm_logprob(h.predecessor)
+        tm_logprob = extract_tm_logprob(winner)
+        sys.stderr.write("LM = %f, TM = %f, Total = %f\n" %
+                         (winner.logprob - tm_logprob, tm_logprob, winner.logprob))

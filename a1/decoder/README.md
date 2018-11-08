@@ -31,3 +31,7 @@ originally aligned by Ulrich Germann:
 
 The language model and translation model are computed from the data 
 in the align directory, using alignments from the Berkeley aligner.
+
+decode-with-swap.py => swap beam decoder
+decode-better.py => decoder over all search space
+decode-tsp.py => traveling salesman decoder

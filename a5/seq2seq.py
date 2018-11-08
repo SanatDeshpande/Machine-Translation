@@ -135,7 +135,7 @@ class EncoderRNN(nn.Module):
         self.hidden_size = hidden_size
 
         self.embedding = nn.Embedding(input_size, hidden_size)
-        self.gru = nn.GRU(hidden_size, hidden_size)
+        self.lstm = nn.LSTM(hidden_size, hidden_size)
 
     def forward(self, input, hidden):
         """runs the forward pass of the encoder
@@ -143,7 +143,7 @@ class EncoderRNN(nn.Module):
         """
         embedded = self.embedding(input).view(1, 1, -1)
         output = embedded
-        output, hidden = self.gru(output, hidden)
+        output, hidden = self.lstm(output, hidden)
         return output, hidden
 
     def get_initial_hidden_state(self):
@@ -164,7 +164,7 @@ class AttnDecoderRNN(nn.Module):
         self.attn = nn.Linear(self.hidden_size * 2, self.max_length)
         self.attn_combine = nn.Linear(self.hidden_size * 2, self.hidden_size)
         self.dropout = nn.Dropout(self.dropout_p)
-        self.gru = nn.GRU(self.hidden_size, self.hidden_size)
+        self.lstm = nn.LSTM(self.hidden_size, self.hidden_size)
         self.out = nn.Linear(self.hidden_size, self.output_size)
 
     def forward(self, input, hidden, encoder_outputs):
@@ -175,7 +175,7 @@ class AttnDecoderRNN(nn.Module):
         embedded = self.dropout(embedded)
 
         attn_weights = F.softmax(
-            self.attn(torch.cat((embedded[0], hidden[0]), 1)), dim=1)
+            self.attn(torch.cat((embedded[0], hidden[0][0]), 1)), dim=1)
         attn_applied = torch.bmm(attn_weights.unsqueeze(0),
                                  encoder_outputs.unsqueeze(0))
 
@@ -183,7 +183,7 @@ class AttnDecoderRNN(nn.Module):
         output = self.attn_combine(output).unsqueeze(0)
 
         output = F.relu(output)
-        output, hidden = self.gru(output, hidden)
+        output, hidden = self.lstm(output, hidden)
 
         log_softmax = F.log_softmax(self.out(output[0]), dim=1)
         return log_softmax, hidden, attn_weights
@@ -197,7 +197,7 @@ class AttnDecoderRNN(nn.Module):
 def train(input_batch, target_batch, encoder, decoder, optimizer, criterion, max_length=MAX_LENGTH):
     #ADD MINI-BATCHING CODE HERE
 
-    encoder_hidden = encoder.get_initial_hidden_state()
+    encoder_hidden = (encoder.get_initial_hidden_state(), encoder.get_initial_hidden_state())
     # make sure the encoder and decoder are in training mode so dropout is applied
     encoder.train()
     decoder.train()
@@ -248,7 +248,7 @@ def translate(encoder, decoder, sentence, src_vocab, tgt_vocab, max_length=MAX_L
     with torch.no_grad():
         input_tensor = tensor_from_sentence(src_vocab, sentence)
         input_length = input_tensor.size()[0]
-        encoder_hidden = encoder.get_initial_hidden_state()
+        encoder_hidden = (encoder.get_initial_hidden_state(), encoder.get_initial_hidden_state())
 
         encoder_outputs = torch.zeros(max_length, encoder.hidden_size, device=device)
 

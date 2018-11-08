@@ -25,7 +25,7 @@ for word in set(sum(french,())):
 
 sys.stderr.write("Decoding %s...\n" % (opts.input,))
 
-addPhraseSwapping = False if len(sys.argv) < 2 else True
+addPhraseSwapping = True # if len(sys.argv) < 2 else True
 
 for f in french:
   # The following code implements a monotone decoding
@@ -68,20 +68,20 @@ for f in french:
                 new_hypothesis = hypothesis(logprob2, lm_state, h, p2)
 
                 logprob = logprob2 + p1.logprob
+                new_lm_state = lm_state
 
-                lm_state1 = lm_state
                 for word in p1.english.split():
-                  (lm_state1, word_logprob) = lm.score(lm_state1, word)
+                  (new_lm_state, word_logprob) = lm.score(new_lm_state, word)
                   logprob += word_logprob
 
                 if j == len(f):
-                    logprob += lm.end(lm_state1)
+                    logprob += lm.end(new_lm_state)
                 else:
                     logbrop = 0.0
 
-                new_new_hypothesis = hypothesis(logprob, lm_state1, new_hypothesis, p1)
-                if lm_state1 not in stacks[j] or stacks[j][lm_state1].logprob < logprob: # second case is recombination
-                  stacks[j][lm_state1] = new_new_hypothesis
+                new_new_hypothesis = hypothesis(logprob, new_lm_state, new_hypothesis, p1)
+                if new_lm_state not in stacks[j] or stacks[j][new_lm_state].logprob < logprob: # second case is recombination
+                  stacks[j][new_lm_state] = new_new_hypothesis
 
   winner = max(stacks[-1].itervalues(), key=lambda h: h.logprob)
   def extract_english(h):

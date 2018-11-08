@@ -168,7 +168,7 @@ class LSTM:
                           "Ui": self.U_i, "Uo": self.U_o, "Uc": self.U_c, "bf": self.b_f, "bi": self.b_i,
                           "bo": self.b_o, "bc": self.b_c, "c": self.c, "h": self.h}
         else:
-            l = n*2 #this is weird, just roll with it
+            l = n*2
             self.output_size = m
             self.hidden_size = n
             self.output_length = n_prime #num tokens in output
@@ -283,7 +283,6 @@ class LSTM:
         #c is context
         c = c.view(c.shape[0], -1)
         t = self.get_t(y, s, c, weights)
-        #print(t.shape, weights["Wo"].shape)
         return torch.matmul(weights["Wo"], t)
 
 class EncoderRNN(nn.Module):
@@ -358,7 +357,6 @@ class EncoderRNN(nn.Module):
         #makes deep copies of tensor (dw, I checked)
         if len(input.shape) == 2:
             input = torch.t(input).view(-1, input.shape[1], input.shape[0]).double()
-            #print(input.shape)
 
         hiddenL2R = hidden.view(-1, hidden.shape[0], hidden.shape[1])
         hiddenR2L = hidden.view(-1, hidden.shape[0], hidden.shape[1])
@@ -368,13 +366,7 @@ class EncoderRNN(nn.Module):
         combined = torch.zeros((hiddenL2R.shape[0],hiddenL2R.shape[2]*2), dtype=torch.double)
         for i in range(combined.shape[0]):
             combined[i].data = torch.cat((hiddenL2R[i][0], hiddenR2L[i][0]))
-        #raise NotImplementedError
         return combined
-
-    # def rachet_unit_test(self):
-    #     input = torch.tensor([[i for i in range(self.input_size)]], dtype=torch.double)
-    #     hidden = torch.tensor([[i*2 for i in range(self.hidden_size)]], dtype=torch.double)
-    #     return self.forward([input, input, input], hidden)
 
     def get_initial_hidden_state(self):
         return torch.zeros(self.hidden_size, 1, device=device)
@@ -437,8 +429,6 @@ class AttnDecoderRNN(nn.Module):
 
         Dropout (self.dropout) should be applied to the word embeddings.
         """
-
-        "*** YOUR CODE HERE ***"
         context = self.decoder.get_c(hidden, encoder_outputs, self.weights) #calculate context
         log_softmax = torch.log(torch.softmax(self.decoder.forwardDecode(output, hidden, context, self.weights), dim=0)) #do forward pass
         self.dropout(log_softmax)
@@ -446,7 +436,6 @@ class AttnDecoderRNN(nn.Module):
         #now we can get the next hidden state and attention weight since we've done a forward pass
         hidden = self.weights["s"]
         attn_weights = self.weights["alpha"]
-        #print(log_softmax.shape)
         return log_softmax, hidden, attn_weights
 
     def get_initial_hidden_state(self):
@@ -469,6 +458,7 @@ def train(input_tensor, target_tensor, encoder, decoder, optimizer, criterion, m
     optimizer.zero_grad()
     embed_input = nn.Embedding(encoder.input_size, encoder.input_size)
     embed_output = nn.Embedding(decoder.output_size, decoder.output_size)
+
     input_tensor = embed_input(input_tensor).double()
     target_tensor = embed_output(target_tensor).double()
 
@@ -498,13 +488,17 @@ def translate(encoder, decoder, sentence, src_vocab, tgt_vocab, max_length=MAX_L
         #print(sentence)
         input_tensor = tensor_from_sentence(src_vocab, sentence)
         input_length = input_tensor.size()[0]
-        encoder_hidden = encoder.get_initial_hidden_state()
+        encoder_hidden = torch.t(encoder.get_initial_hidden_state())
+
+        embed_input = nn.Embedding(encoder.input_size, encoder.input_size)
+        embed_output = nn.Embedding(decoder.output_size, decoder.output_size)
 
         encoder_outputs = torch.zeros(max_length, encoder.hidden_size, device=device)
 
         for ei in range(input_length):
-            encoder_output, encoder_hidden = encoder(input_tensor[ei],
-                                                     encoder_hidden)
+            input_tensor = embed_input(input_tensor).double()
+            print(input_tensor.shape, encoder_hidden.double().shape)
+            encoder_output = encoder(input_tensor[ei], encoder_hidden)
 
             encoder_outputs[ei] += encoder_output[0, 0]
 
@@ -568,8 +562,19 @@ def show_attention(input_sentence, output_words, attentions):
     you may want to use matplotlib.
     """
 
-    "*** YOUR CODE HERE ***"
-    raise NotImplementedError
+    figure, ax = plt.subplots()
+    im = ax.imshow(attentions, cmap = 'Greys_r')
+
+    ax.set_xticks(np.arange(len(output_words)))
+    ax.set_yticks(np.arange(len(input_sentence)))
+    ax.set_xticklabels(output_words)
+    ax.set_yticklabels(input_sentence)
+
+    plt.setp(ax.get_xticklabels(), rotation=90, ha="right")
+
+    ax.set_title("Attention Heat Map for English to French Translation")
+    figure.tight_layout()
+    plt.show()
 
 
 def translate_and_show_attention(input_sentence, encoder1, decoder1, src_vocab, tgt_vocab):
