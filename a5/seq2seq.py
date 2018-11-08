@@ -3,6 +3,8 @@
 
 from __future__ import unicode_literals, print_function, division
 
+from Embed import Embed
+
 import argparse
 import logging
 import random
@@ -134,7 +136,8 @@ class EncoderRNN(nn.Module):
         super(EncoderRNN, self).__init__()
         self.hidden_size = hidden_size
 
-        self.embedding = nn.Embedding(input_size, hidden_size)
+        #self.embedding = nn.Embedding(input_size, hidden_size)
+        self.embedding = Embed(input_size, hidden_size)
         self.lstm = nn.LSTM(hidden_size, hidden_size)
 
     def forward(self, input, hidden):
@@ -160,7 +163,8 @@ class AttnDecoderRNN(nn.Module):
         self.dropout_p = dropout_p
         self.max_length = max_length
 
-        self.embedding = nn.Embedding(self.output_size, self.hidden_size)
+        #self.embedding = nn.Embedding(self.output_size, self.hidden_size)
+        self.embedding = Embed(self.output_size, self.hidden_size)
         self.attn = nn.Linear(self.hidden_size * 2, self.max_length)
         self.attn_combine = nn.Linear(self.hidden_size * 2, self.hidden_size)
         self.dropout = nn.Dropout(self.dropout_p)
@@ -217,6 +221,7 @@ def train(input_batch, target_batch, encoder, decoder, optimizer, criterion, max
                 input_tensor[ei], encoder_hidden)
             encoder_outputs[ei] = encoder_output[0, 0]
 
+
         decoder_input = torch.tensor([[SOS_index]], device=device)
 
         decoder_hidden = encoder_hidden  # sizes
@@ -229,7 +234,7 @@ def train(input_batch, target_batch, encoder, decoder, optimizer, criterion, max
     loss.data = loss.data / len(input_batch)
     loss.backward()
     optimizer.step()
-
+    print("iter")
     target_length = sum([i.size(0)/len(target_batch) for i in target_batch])
     return loss.item() / target_length
 
