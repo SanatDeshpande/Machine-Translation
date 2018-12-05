@@ -234,7 +234,6 @@ def train(input_batch, target_batch, encoder, decoder, optimizer, criterion, max
     loss.data = loss.data / len(input_batch)
     loss.backward()
     optimizer.step()
-    print("iter")
     target_length = sum([i.size(0)/len(target_batch) for i in target_batch])
     return loss.item() / target_length
 
