@@ -33,10 +33,10 @@ def _re_tokenization(phrase):
 
     def tokenize(word):
         i = word.find('.')
-        return word[:i - 1] + " " + word[i] + " " + word[i+1:]
+        return word[:i] + " " + word[i] + " " + word[i+1:]
 
     phrase = phrase.split()
-    for i in range(len(phrase)):
+    for i in range(len(phrase) - 1):
         if needs_tokenization(phrase[i]):
             phrase[i] = tokenize(phrase[i])
     return " ".join(phrase)
@@ -114,4 +114,4 @@ def main():
 
 if __name__ == '__main__':
     interjections = set(open('./data/interjections.txt').read().split())
-    print(_re_tokenization("i job pm fuck"))
+    print(_re_tokenization("i love my job.pm fuck."))
