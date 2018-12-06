@@ -2,6 +2,7 @@
 import optparse
 import sys
 import math
+import csv
 from collections import namedtuple
 from validator_collection import checkers
 from model import Model
@@ -9,8 +10,17 @@ from model import Model
 global interjections
 global language_model
 global formal_words
+global informal_words
+global informal_words_set
+
 
 def _dictionary(phrase):
+    phrase = phrase.split()
+    for i, word in enumerate(phrase):
+        if word not in formal_words:
+            if word in informal_words_set:
+                index = [x for x, y in enumerate(informal_words) if y[0] == word]
+                phrase[i] = informal_words[index[0]][2]
     return phrase
 
 def _punctuation(phrase):
@@ -120,7 +130,7 @@ def main():
 
     for i, stack in enumerate(stacks[:-1]):
         num_stacks = len(stacks)
-        for h in sorted(stack, key=lambda h: h.score)[:10]: # prune
+        for h in sorted(stack, key=lambda h: h.score)[:opts.s]: # prune
           for producer in hypotheses_producers:
             if producer not in h.list_previous_producers:
                 new_list = h.list_previous_producers + [producer]
@@ -149,6 +159,9 @@ if __name__ == '__main__':
     interjections = set(open('./data/interjections.txt').read().split())
     language_model = Model("./data/small_english.txt")
     language_model.build()
+    with open("data/informal.csv") as f:
+        informal_words = list(csv.reader(f))[1:319]
+        informal_words_set = list(i[0] for i in informal_words)
     formal_words = set(open('./data/dictionary.txt').read().split())
 
-    print(main())
+    print(_dictionary("i'm tryna see my cus"))
