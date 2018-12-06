@@ -5,6 +5,7 @@ from collections import namedtuple
 from validator_collection import checkers
 
 global interjections
+global formal_words
 
 def _dictionary(pharse):
     pass
@@ -45,7 +46,13 @@ def _prefix(phrase):
     pass
 
 def _quotation(phrase):
-    pass
+    def last_char_quote(word):
+        return word[-1] == 'm' or word[-1] == 's' or word[-1] == 't'
+
+    phrase = phrase.split()
+    for word in phrase:
+        if last_char_quote(word) and word not in formal_words:
+
 
 def _abbreviation(phraset):
     pass
