@@ -5,6 +5,7 @@ class Model:
     def __init__(self, filename):
         with open(filename, "r") as f:
             self.sentences = f.read().split("\n")
+        self.epsilon = 1e-6 #for numerical stability
     def build(self):
         self.word_count = defaultdict(int)
         self.bigram_count = defaultdict(int)
@@ -18,15 +19,14 @@ class Model:
 
     def score(self, phrase):
         phrase = phrase + " <e>"
-        score = 0
+        score = self.epsilon
         last_word = "<s>"
         for word in phrase.split(" "):
             word_count = self.word_count[word]
             joint_count = self.bigram_count[(last_word, word)]
             if word_count != 0:
-                score += math.log(joint_count / word_count)
+                score += math.log((joint_count + self.epsilon) / word_count)
             last_word = word
-            print(score)
         return score
 
 

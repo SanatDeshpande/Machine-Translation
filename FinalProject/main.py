@@ -10,11 +10,11 @@ global interjections
 global language_model
 global formal_words
 
-def _dictionary(pharse):
-    pass
+def _dictionary(phrase):
+    return phrase
 
 def _punctuation(phrase):
-    pass
+    return phrase
 
 def _interjection(phrase):
     phrase = phrase.split()
@@ -26,10 +26,10 @@ def _interjection(phrase):
     return " ".join(phrase)
 
 def _pronunciation(phrase):
-    pass
+    return phrase
 
-def _be(pharse):
-    pass
+def _be(phrase):
+    return phrase
 
 def _re_tokenization(phrase):
     def needs_tokenization(word):
@@ -46,7 +46,7 @@ def _re_tokenization(phrase):
     return " ".join(phrase)
 
 def _prefix(phrase):
-    pass
+    return phrase
 
 def _quotation(phrase):
     def last_char_quote(word):
@@ -62,7 +62,7 @@ def _quotation(phrase):
     return " ".join(phrase)
 
 def _abbreviation(phraset):
-    pass
+    return phraset
 
 def _time(phrase):
     def normalize_time(s):
@@ -109,27 +109,46 @@ def main():
     optparser.add_option("-n", "--num-producers", dest="num_producers", type="int", default=len(hypotheses_producers), help="The number of different hypothesis producers you wish to have running on your sentence")
     opts = optparser.parse_args()[0]
 
+    # with open(opts.input, "r") as f:
+    #     input = f.read()
+    input = "oh she said shed call at 5"
     hypothesis = namedtuple("hypothesis", "score, list_previous_producers, phrase")
-    initial_hypothesis = hypothesis(0.0, [], None) #phrase should be the input
+    initial_hypothesis = hypothesis(0.0, [], input) #phrase should be the input
     stacks = [[] for _ in range(opts.num_producers)] + [[]]
     stacks[0].append(initial_hypothesis)
 
+
     for i, stack in enumerate(stacks[:-1]):
-        for h in sorted(stack, key=lambda h: h.score): # prune
+        num_stacks = len(stacks)
+        for h in sorted(stack, key=lambda h: h.score)[:10]: # prune
           for producer in hypotheses_producers:
             if producer not in h.list_previous_producers:
                 new_list = h.list_previous_producers + [producer]
                 new_phrase = hypotheses_producers[producer](h.phrase)
-                new_score = score(new_phrase, new_list)
+                new_score = h.score + score(new_phrase, new_list)
                 new_hypothesis = hypothesis(new_score, new_list, new_phrase)
                 stacks[i+1].append(new_hypothesis)
-    winner = max(stacks[-1], key=lambda h: h.score)
-    print(winner.phrase)
+                added = True
 
+    #gets first non empty stack of hypotheses
+    non_empty = 0
+    for count, s in enumerate(stacks):
+        if len(s) == 0:
+            non_empty = count - 1
+            break
+
+    hypothesis, final_score = None, -1
+    for s in stacks:
+        for h in s:
+            if h.score > final_score:
+                final_score = h.score
+                hypothesis = h
+
+    print(hypothesis.phrase)
 if __name__ == '__main__':
     interjections = set(open('./data/interjections.txt').read().split())
     language_model = Model("./data/small_english.txt")
     language_model.build()
-    print(_re_tokenization("i job pm fuck"))
     formal_words = set(open('./data/dictionary.txt').read().split())
-    print(_quotation("shed"))
+
+    print(main())
