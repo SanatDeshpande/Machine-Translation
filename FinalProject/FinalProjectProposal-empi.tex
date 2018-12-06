@@ -147,8 +147,6 @@ Due to lack of possible data, we were not able to obtain accurate results from t
 	\item \textbf{Abbreviation}: if we can retrieve a formal word from an informal word by adding a vowel, then we will attempt to recover said formal word.
 \end{itemize}
 
-The best way to evaluate this model will definitely be to use BLEU translation metric to see how well our model performs once the text is translated.
-
 \section{Findings}
 The most important issue that we ran into was our scoring function. Indeed, in the inspired paper, the authors explain that they weighted each function using "using the pairwise ranking optimization algorithm (Hopkins and May, 2011) on the development set". Given the vague nature of the description and the distinct lack of data available to us for training, our scoring function was quite inadequate and made it very difficult to achieve proper performance.\\
 
