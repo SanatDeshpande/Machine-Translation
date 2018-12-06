@@ -47,12 +47,16 @@ def _prefix(phrase):
 
 def _quotation(phrase):
     def last_char_quote(word):
-        return word[-1] == 'm' or word[-1] == 's' or word[-1] == 't'
+        return word[-1] == 'm' or word[-1] == 's' or word[-1] == 't' or word[-1] == 'd'
 
     phrase = phrase.split()
-    for word in phrase:
+    for i, word in enumerate(phrase):
         if last_char_quote(word) and word not in formal_words:
+            new_word = word[:-1] + "'" + word[-1:]
+            if new_word in formal_words:
+                phrase[i] = new_word
 
+    return " ".join(phrase)
 
 def _abbreviation(phraset):
     pass
@@ -121,4 +125,5 @@ def main():
 
 if __name__ == '__main__':
     interjections = set(open('./data/interjections.txt').read().split())
-    print(_re_tokenization("i love my job.pm fuck."))
+    formal_words = set(open('./data/dictionary.txt').read().split())
+    print(_quotation("shed"))
