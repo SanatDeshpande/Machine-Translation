@@ -1,0 +1,110 @@
+
+%----------------------------------------------------------------------------------------
+%	PACKAGES AND OTHER DOCUMENT CONFIGURATIONS
+%----------------------------------xq------------------------------------------------------
+
+\documentclass{article}
+
+\input{structure.tex} % Include the file specifying the document structure and custom commands
+
+%----------------------------------------------------------------------------------------
+%	ASSIGNMENT INFORMATION
+%----------------------------------------------------------------------------------------
+
+\title{Machine Translation 468: Final Project Interim Report} % Title of the assignment
+
+\author{ Lionel Eisenberg, Sanat Deshpande} % Author name and email address
+
+\date{Johns Hopkins University --- \today} % University, school and/or department name(s) and a date
+
+%----------------------------------------------------------------------------------------
+
+\begin{document}
+
+\maketitle % Print the title
+
+%----------------------------------------------------------------------------------------
+%	INTRODUCTION
+%----------------------------------------------------------------------------------------
+
+\section{Introducton: the problem} % Unnumbered section
+  
+Neural machine translation has advanced aggressively over the past few years, boasting impressive results in several language pairs, notably English and French. However, despite its success with formal or standardized text, these models often flounder when presented with slang, abbreviations, and general errors in writing. For this reason, we’ve elected to tackle the problem of normalizing text prior to translation. In other words, in a mini-translation task of its own, how can we take non-standard language, reformulate it as standard, and then pass it into a pre-existing translation model? \\
+
+For instance, a modern neural machine translation model would encounter no trouble translating the following from English to French:
+
+\begin{itemize}
+	\item “Where are you?” -> “Où es tu?”
+\end{itemize}
+However, given a quite common, non-standard equivalent, it would not meet the same success. The below example outlines a possible instance of the process by which normalization prior to translation would work
+\begin{itemize}
+	\item “Wya?” -> “Where you at?” -> “Where are you?”
+	\item The above normalization would then be acceptable input for regular neural translation
+\end{itemize}
+
+To clarify, our project aims to tackle the normalization problem of non-standard language translation, not the translation itself. This means we seek only to render slang or mistake-ridden usage into a formalized version of the source language. In practice, our model would be used as a preprocessing step to standardize input prior to using any existing translation model.\\
+
+The motivation behind solving this problem is the abundant and rapidly growing instances of its uses cases. As the population of internet users burgeons, ever-changing non-standard language will present itself with rising frequency, thus increasing the need for neural translation models that can cope with this new language. While a text normalizer would not be solving some underlying mathematical challenge that comes with language translation, it would, however, enable us to build much more versatile translation systems that can handle a broader set of cases than currently possible.   
+
+\section{Baseline}
+
+We ran a vanilla statistical machine translator called OpenMT on two different datasets, these were a "Proper" german to english dataset and a German tweet to english dataset (source: \\https://github.com/WladimirSidorenko/PotTS). \\\\Here are the. score we got:
+\begin{enumerate}
+	\item Proper German $>$ English
+		\begin{itemize}
+			\item PRED AVG SCORE: -0.8754, PRED PPL: 2.3999
+		\end{itemize}
+	\item Tweet German $>$ English
+	\begin{itemize}
+			\item PRED AVG SCORE: -0.8050, PRED PPL: 2.2366
+		\end{itemize}
+\end{enumerate}
+
+
+
+\section{Our Project}
+The implementation we are going to attempt to code in order to somewhat solve the problem that we have described above is text normalization through beam-search decoding. Indeed, in order to be able to properly translate our input social media sentences, we need to transform said input into proper english that a statistical model is used to translating. We will be using a decoder very similar to the one proposed in the paper  \textit{A Beam-Search Decoder for Normalization of Social Media Text with Application to Machine}, \textbf{Pidong Wang and Hwee Tou Ng}, in order to transform our social media text into “proper” english text. \\
+
+Similarly to beam search decoders implemented in papers such as \textit{Pharaoh: A Beam Search Decoder for Phrase-Based Statistical Machine Translation}, \textbf{Koehn}, we want to create a hypothesis tree for the input sentence we are trying to decode, and keep the best hypotheses as the decoder goes through more and more of these hypotheses. We will be describing what the hypotheses creators are in a moment but first let us examine the process the decoder will take to evaluate hypotheses. \\
+
+This whole process should sound very similar to those familiar with the decoder described by \textit{Koehn} in the above paper, 
+\begin{enumerate}
+	\item We first start by arranging all the hypothesis in stacks, where the $i-th$ stack corresponds to the hypothesis having had $i$ hypotheses producers run on it. 
+	\item We then cycle through each hypothesis in the stack $i$
+	\begin{enumerate}
+		\item Cycle through each possible hypothesis producer
+		\item Produce each possible new hypothesis from these producers
+		\item Add them to the next hypothesis stack 
+		\item Prune it through methods we have discussed in class before.
+		\begin{itemize}
+			\item These methods include histogram pruning, where we limit the number of hypothesis of a stack to a prefixed number $k$
+		\end{itemize}
+	\end{enumerate}
+	\item Return the best scored hypothesis
+\end{enumerate}
+
+In order to score the hypotheses, we will be using summations of weighted scoring techniques: 
+$$score(h) = \sum_{i}^{n}{\alpha_ig_i(h)}$$
+
+The scoring techniques are the following:
+\begin{itemize}
+	\item language model score 
+	\item Informal word count penalty
+	\item Amount of changes made by the hypothesis makers
+\end{itemize}
+
+Now that we have outlined the decoder logic for our implementation, let us examine the different hypothesis creators that we need to implement to actually normalize the text: \\\\
+For all of these techniques, we will train the model on synthetic data where we create input and target data by synthetically manipulating text. For example for punctuation correction, we will synthetically create erroneous input for target sentences by substituting, deleting and adding incorrect punctuation into the sentence. Although we do realize that this method creates unrealistic data, it is the best we can do given the lack of currently available data.
+\begin{itemize}
+	\item \textbf{Punctuation corrector}: social media text has usually very poor punctuation, we want to create a way to substitute, add and delete punctuation from input sentences. To do this we will use a two layer DCRF model that will in its first layer creates the actual punctuation tags while the second layer gives us sentence boundaries. We then use n-grams to run the model.
+	\item \textbf{Dictionary}: we will have a dictionary of acronyms that we can parse our input hypothesis for and substitute acronyms or slang for their real meaning. For example, “wya” would be normalized to “where you at” by this hypothesis creator. This dictionary will either be manually generated, or we will be using the UrbanDictionary.org API endpoint to define informal words or slang.
+	\item \textbf{Interjection}: remove all words that are possible interjections at the end of a sentence (from a  list of predertimed interjections)
+	\item \textbf{Word-Recovery}: we recover missing words from the “be” verb: BE, AM, ARE, IS, using synthetic data and a CRF/DL model.
+	\item \textbf{Prefix}: recover formal word from words with prefixes that would otherwise be a formal word.
+	\item \textbf{Time}: Potential time expressions will be normalized.
+	\item \textbf{Abbreviation}: if we can retrieve a formal word from an informal word by adding a vowel, then we will attempt to recover said formal word.
+\end{itemize}
+
+The best way to evaluate this model will definitely be to use BLEU translation metric to see how well our model performs once the text is translated.
+
+\end{document}
