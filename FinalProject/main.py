@@ -5,6 +5,7 @@ from collections import namedtuple
 from validator_collection import checkers
 
 global interjections
+global formal_words
 
 def _dictionary(pharse):
     pass
@@ -33,10 +34,10 @@ def _re_tokenization(phrase):
 
     def tokenize(word):
         i = word.find('.')
-        return word[:i - 1] + " " + word[i] + " " + word[i+1:]
+        return word[:i] + " " + word[i] + " " + word[i+1:]
 
     phrase = phrase.split()
-    for i in range(len(phrase)):
+    for i in range(len(phrase) - 1):
         if needs_tokenization(phrase[i]):
             phrase[i] = tokenize(phrase[i])
     return " ".join(phrase)
@@ -45,7 +46,13 @@ def _prefix(phrase):
     pass
 
 def _quotation(phrase):
-    pass
+    def last_char_quote(word):
+        return word[-1] == 'm' or word[-1] == 's' or word[-1] == 't'
+
+    phrase = phrase.split()
+    for word in phrase:
+        if last_char_quote(word) and word not in formal_words:
+
 
 def _abbreviation(phraset):
     pass
@@ -114,4 +121,4 @@ def main():
 
 if __name__ == '__main__':
     interjections = set(open('./data/interjections.txt').read().split())
-    print(_re_tokenization("i job pm fuck"))
+    print(_re_tokenization("i love my job.pm fuck."))
