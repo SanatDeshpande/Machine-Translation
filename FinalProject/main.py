@@ -13,6 +13,8 @@ global formal_words
 global informal_words
 global informal_words_set
 
+def _punctuation(phrase):
+    pass
 
 def _dictionary(phrase):
     phrase = phrase.split()
@@ -23,9 +25,6 @@ def _dictionary(phrase):
                 phrase[i] = informal_words[index[0]][2]
     return phrase
 
-def _punctuation(phrase):
-    return phrase
-
 def _interjection(phrase):
     phrase = phrase.split()
     if phrase[0] in interjections:
@@ -34,12 +33,6 @@ def _interjection(phrase):
         phrase = phrase[:-1]
 
     return " ".join(phrase)
-
-def _pronunciation(phrase):
-    return phrase
-
-def _be(phrase):
-    return phrase
 
 def _re_tokenization(phrase):
     def needs_tokenization(word):
@@ -55,9 +48,6 @@ def _re_tokenization(phrase):
             phrase[i] = tokenize(phrase[i])
     return " ".join(phrase)
 
-def _prefix(phrase):
-    return phrase
-
 def _quotation(phrase):
     def last_char_quote(word):
         return word[-1] == 'm' or word[-1] == 's' or word[-1] == 't' or word[-1] == 'd'
@@ -70,9 +60,6 @@ def _quotation(phrase):
                 phrase[i] = new_word
 
     return " ".join(phrase)
-
-def _abbreviation(phraset):
-    return phraset
 
 def _time(phrase):
     def normalize_time(s):
@@ -96,20 +83,31 @@ def _time(phrase):
                 phrase[i - 1] = normalize_time(phrase[i - 1])
     return " ".join(phrase)
 
-def score(phrase, hypotheses):
-    return math.exp(language_model.score(phrase)) + .15 * len(hypotheses)
+def _levenshtein_distance(s1, s2): #NOTE TAKEN FROM https://stackoverflow.com/questions/2460177/edit-distance-in-python
+    if len(s1) > len(s2):
+        s1, s2 = s2, s1
+
+    distances = range(len(s1) + 1)
+    for i2, c2 in enumerate(s2):
+        distances_ = [i2+1]
+        for i1, c1 in enumerate(s1):
+            if c1 == c2:
+                distances_.append(distances[i1])
+            else:
+                distances_.append(1 + min((distances[i1], distances[i1 + 1], distances_[-1])))
+        distances = distances_
+    return distances[-1]
+
+def score(phrase, old_phrase):
+    return math.exp(language_model.score(phrase)) + .2 * _levenshtein_distance(phrase, old_phrase)
 
 def main():
     hypotheses_producers = {
         'dictionary': _dictionary,
         'punctuation': _punctuation,
         'interjection': _interjection,
-        'pronunciation': _pronunciation,
-        'be': _be,
         're_tokenization': _re_tokenization,
-        'prefix': _prefix,
         'quotation': _quotation,
-        'abbreviation': _abbreviation,
         'time': _time
     }
 
@@ -135,7 +133,7 @@ def main():
             if producer not in h.list_previous_producers:
                 new_list = h.list_previous_producers + [producer]
                 new_phrase = hypotheses_producers[producer](h.phrase)
-                new_score = h.score + score(new_phrase, new_list)
+                new_score = h.score + score(new_phrase, h.phrase)
                 new_hypothesis = hypothesis(new_score, new_list, new_phrase)
                 stacks[i+1].append(new_hypothesis)
                 added = True
@@ -164,4 +162,4 @@ if __name__ == '__main__':
         informal_words_set = list(i[0] for i in informal_words)
     formal_words = set(open('./data/dictionary.txt').read().split())
 
-    print(_dictionary("i'm tryna see my cus"))
+    print(main())
