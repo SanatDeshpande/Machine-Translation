@@ -1,10 +1,13 @@
 #!/usr/bin/env python
 import optparse
 import sys
+import math
 from collections import namedtuple
 from validator_collection import checkers
+from model import Model
 
 global interjections
+global language_model
 
 def _dictionary(pharse):
     pass
@@ -72,8 +75,8 @@ def _time(phrase):
                 phrase[i - 1] = normalize_time(phrase[i - 1])
     return " ".join(phrase)
 
-def score(phrase):
-    return 0.0
+def score(phrase, hypotheses):
+    return math.exp(language_model.score(phrase)) + .15 * len(hypotheses)
 
 def main():
     hypotheses_producers = {
@@ -106,7 +109,7 @@ def main():
             if producer not in h.list_previous_producers:
                 new_list = h.list_previous_producers + [producer]
                 new_phrase = hypotheses_producers[producer](h.phrase)
-                new_score = score(new_phrase)
+                new_score = score(new_phrase, new_list)
                 new_hypothesis = hypothesis(new_score, new_list, new_phrase)
                 stacks[i+1].append(new_hypothesis)
     winner = max(stacks[-1], key=lambda h: h.score)
@@ -114,4 +117,8 @@ def main():
 
 if __name__ == '__main__':
     interjections = set(open('./data/interjections.txt').read().split())
+
+    language_model = Model("./data/small_english.txt")
+    language_model.build()
+
     print(_re_tokenization("i job pm fuck"))
