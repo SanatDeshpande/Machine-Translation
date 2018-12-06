@@ -14,7 +14,7 @@ global informal_words
 global informal_words_set
 
 def _punctuation(phrase):
-    pass
+    return phrase
 
 def _dictionary(phrase):
     phrase = phrase.split()
@@ -23,7 +23,7 @@ def _dictionary(phrase):
             if word in informal_words_set:
                 index = [x for x, y in enumerate(informal_words) if y[0] == word]
                 phrase[i] = informal_words[index[0]][2]
-    return phrase
+    return " ".join(phrase)
 
 def _interjection(phrase):
     phrase = phrase.split()
@@ -112,47 +112,52 @@ def main():
     }
 
     optparser = optparse.OptionParser()
-    optparser.add_option("-i", "--input", dest="input", default="data/input", help="File containing sentences to translate (default=data/input)")
-    optparser.add_option("-s", "--stack-size", dest="s", default=1, type="int", help="Maximum stack size (default=1)")
+    optparser.add_option("-i", "--input", dest="input", default="data/input/tweets.txt", help="File containing sentences to translate (default=data/input)")
+    optparser.add_option("-s", "--stack-size", dest="s", default=10000, type="int", help="Maximum stack size (default=1)")
     optparser.add_option("-n", "--num-producers", dest="num_producers", type="int", default=len(hypotheses_producers), help="The number of different hypothesis producers you wish to have running on your sentence")
     opts = optparser.parse_args()[0]
 
-    # with open(opts.input, "r") as f:
-    #     input = f.read()
-    input = "oh she said shed call at 5"
-    hypothesis = namedtuple("hypothesis", "score, list_previous_producers, phrase")
-    initial_hypothesis = hypothesis(0.0, [], input) #phrase should be the input
-    stacks = [[] for _ in range(opts.num_producers)] + [[]]
-    stacks[0].append(initial_hypothesis)
+    with open(opts.input, "r") as f:
+        inputs = f.read().split("\n")
+    cumulative_score_diff = 0.0
+    for input_count, input in enumerate(inputs):
+        hypothesis = namedtuple("hypothesis", "score, list_previous_producers, phrase")
+        initial_hypothesis = hypothesis(0.0, [], input) #phrase should be the input
+        stacks = [[] for _ in range(opts.num_producers)] + [[]]
+        stacks[0].append(initial_hypothesis)
 
 
-    for i, stack in enumerate(stacks[:-1]):
-        num_stacks = len(stacks)
-        for h in sorted(stack, key=lambda h: h.score)[:opts.s]: # prune
-          for producer in hypotheses_producers:
-            if producer not in h.list_previous_producers:
-                new_list = h.list_previous_producers + [producer]
-                new_phrase = hypotheses_producers[producer](h.phrase)
-                new_score = h.score + score(new_phrase, h.phrase)
-                new_hypothesis = hypothesis(new_score, new_list, new_phrase)
-                stacks[i+1].append(new_hypothesis)
-                added = True
+        for i, stack in enumerate(stacks[:-1]):
+            num_stacks = len(stacks)
+            for h in sorted(stack, key=lambda h: h.score)[:opts.s]: # prune
+              for producer in hypotheses_producers:
+                if producer not in h.list_previous_producers:
+                    new_list = h.list_previous_producers + [producer]
+                    new_phrase = hypotheses_producers[producer](h.phrase)
+                    new_score = h.score + score(new_phrase, h.phrase)
+                    new_hypothesis = hypothesis(new_score, new_list, new_phrase)
+                    stacks[i+1].append(new_hypothesis)
+                    added = True
 
-    #gets first non empty stack of hypotheses
-    non_empty = 0
-    for count, s in enumerate(stacks):
-        if len(s) == 0:
-            non_empty = count - 1
-            break
+        #gets first non empty stack of hypotheses
+        non_empty = 0
+        for count, s in enumerate(stacks):
+            if len(s) == 0:
+                non_empty = count - 1
+                break
 
-    hypothesis, final_score = None, -1
-    for s in stacks:
-        for h in s:
-            if h.score > final_score:
-                final_score = h.score
-                hypothesis = h
+        hypothesis, final_score = None, -1
+        for s in stacks:
+            for h in s:
+                if h.score > final_score:
+                    final_score = h.score
+                    hypothesis = h
 
-    print(hypothesis.phrase)
+        cumulative_score_diff += language_model.score(hypothesis.phrase) - language_model.score(input)
+        cumulative_score_diff = cumulative_score_diff / (input_count + 1)
+        print(cumulative_score_diff, input_count)
+    print("final: ", cumulative_score_diff)
+
 if __name__ == '__main__':
     interjections = set(open('./data/interjections.txt').read().split())
     language_model = Model("./data/small_english.txt")
@@ -162,4 +167,4 @@ if __name__ == '__main__':
         informal_words_set = list(i[0] for i in informal_words)
     formal_words = set(open('./data/dictionary.txt').read().split())
 
-    print(main())
+    main()
