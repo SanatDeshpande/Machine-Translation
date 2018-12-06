@@ -8,6 +8,7 @@ from model import Model
 
 global interjections
 global language_model
+global formal_words
 
 def _dictionary(pharse):
     pass
@@ -36,10 +37,10 @@ def _re_tokenization(phrase):
 
     def tokenize(word):
         i = word.find('.')
-        return word[:i - 1] + " " + word[i] + " " + word[i+1:]
+        return word[:i] + " " + word[i] + " " + word[i+1:]
 
     phrase = phrase.split()
-    for i in range(len(phrase)):
+    for i in range(len(phrase) - 1):
         if needs_tokenization(phrase[i]):
             phrase[i] = tokenize(phrase[i])
     return " ".join(phrase)
@@ -48,7 +49,17 @@ def _prefix(phrase):
     pass
 
 def _quotation(phrase):
-    pass
+    def last_char_quote(word):
+        return word[-1] == 'm' or word[-1] == 's' or word[-1] == 't' or word[-1] == 'd'
+
+    phrase = phrase.split()
+    for i, word in enumerate(phrase):
+        if last_char_quote(word) and word not in formal_words:
+            new_word = word[:-1] + "'" + word[-1:]
+            if new_word in formal_words:
+                phrase[i] = new_word
+
+    return " ".join(phrase)
 
 def _abbreviation(phraset):
     pass
@@ -117,8 +128,8 @@ def main():
 
 if __name__ == '__main__':
     interjections = set(open('./data/interjections.txt').read().split())
-
     language_model = Model("./data/small_english.txt")
     language_model.build()
-
     print(_re_tokenization("i job pm fuck"))
+    formal_words = set(open('./data/dictionary.txt').read().split())
+    print(_quotation("shed"))
